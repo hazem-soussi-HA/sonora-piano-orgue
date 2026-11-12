@@ -37,6 +37,7 @@ The private repository stays private: the studio reaches it through a local prox
 | **The blend** | one brass knob crossfades both engines inside a single note |
 | **The machine** | the same Rust core renders the voices in the browser (WASM) and analyses the audio server-side (native) |
 | **The ear** | WASAPI loopback of the default output device — it hears exactly what your speakers play. No driver, no samples, no cloud |
+| **The decoder** | the music read back in real time: the notes sounding now, the chord they spell, the key they live in — drawn as a mandala of the circle of fifths |
 | **The live studio** | a realtime techno engine that locks onto the record: key, tempo, brightness, energy |
 | **The healer** | an intention goes in, a direction comes out — and the direction is applied to the running engine |
 
@@ -56,6 +57,31 @@ Add `?listen` to the URL to auto-connect to the server listener.
 
 Play with the mouse (velocity from where you click the key), the QWERTY row
 (`A S D F G H J K L ;` / `W E T Y U O P`, `Z`/`X` shift the octave), or a MIDI keyboard.
+
+---
+
+## The decoder — the keys in dimension
+
+The **DECODER** panel reads the music back while it plays:
+
+* **the mandala** — the twelve pitch classes placed on the **circle of fifths**. The
+  angle is the key space, the radius is the octave, the size of each petal is the energy
+  of that pitch class. The chord is the polygon its notes draw across the mandala; the
+  detected key is the ring on its axis. It turns with the low end, like the nano mandala.
+* **the waterfall** — the spectrum scrolling in time, the detected notes marked on the
+  frequency axis.
+* **the readout** — the chord with its tones (`F#m (F# A C#)`), the key, and the live
+  notes with their salience.
+
+Underneath, in Rust: spectral peak picking with a **harmonic discount** (a partial an
+octave, a twelfth or a double octave above a stronger one is that one's harmonic, not a
+note), a chroma built only from the surviving partials, and a chord matcher that scores
+each template by the *fraction of the energy it explains* — so a plain triad is not
+swallowed by a seventh that happens to fit.
+
+Verified against known chords: `A C# E` → **A major** (notes E4 · A3 · C#4, no chroma
+leakage), `F# A C#` → **F# minor**, `A C# E G` → **A7**, `C E G B` → **Cmaj7**, a lone
+`C3` → **C**.
 
 ---
 
@@ -147,6 +173,14 @@ cd pub\rust && build.cmd
 ```
 
 See `pub/rust/README.md` for the architecture and the flat C ABI (no `wasm-bindgen`).
+
+The native listener talks to WASAPI through **hand-written COM vtables** — no `windows`
+crate, no crates.io dependency at all, nothing to download and no build scripts to run.
+
+> On a machine with a strict **Device Guard / WDAC** policy a freshly built unsigned
+> binary can be refused ("blocked by your organization's Device Guard policy"). The
+> prebuilt `sonor-listener.exe` in this repository is already trusted; if you rebuild it
+> and it is refused, allow that file in your policy.
 
 ---
 

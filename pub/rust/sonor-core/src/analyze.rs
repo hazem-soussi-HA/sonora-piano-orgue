@@ -111,61 +111,75 @@ impl Analyzer {
         };
         out.flux = flux / bins as f32;
 
-        /* chroma: one peak per semitone.
-           Summing energy over a band smears the leakage of a strong partial
-           into its neighbours (which then fools the key detector), so each
-           semitone claims the loudest bin inside its band instead. */
-        let mut chroma = [0.0f32; 12];
-        let mut chroma_total = 0.0f32;
+        /* ── the spectral peaks: the real partials of the sound ──────────────
+           Everything downstream (the chroma, the notes, the chord) is built
+           from these, never from raw bins: a bin holds the energy of a
+           partial *and* of whatever leaked into it. */
+        let bins = self.mag.len();
         let bin_w = sr / n as f32;
-        for m in 33..100 {
-            let fc = 440.0 * ((m as f32 - 69.0) / 12.0).exp2();
-            if fc < 55.0 || fc > 2200.0 {
-                continue;
-            }
-            let half = (1.0 / 24.0f32).exp2();
-            let lo = fc / half;
-            let hi = fc * half;
-            let k_lo = ((lo / bin_w).ceil() as usize).max(1);
-            let k_hi = ((hi / bin_w).floor() as usize).min(bins - 1);
-            let mut best_m = 0.0f32;
-            for k in k_lo..=k_hi {
-                if self.mag[k] > best_m {
-                    best_m = self.mag[k];
-                }
-            }
-            if best_m <= 0.0 {
-                /* no bin centre inside the band: use the closest one */
-                let k = ((fc / bin_w).round() as usize).clamp(1, bins - 1);
-                best_m = self.mag[k] * 0.5;
-            }
-            if best_m > 0.0 {
-                chroma[((m % 12) + 12) as usize % 12] += best_m;
-                chroma_total += best_m;
+        let mut max_mag = 0.0f32;
+        for k in 2..bins - 1 {
+            if self.mag[k] > max_mag {
+                max_mag = self.mag[k];
             }
         }
-        if chroma_total > 0.0 {
-            /* Unsharp mask: a partial's spectral skirt still lands in the
-               neighbouring semitone, so subtract the local background and
-               keep only what stands out. */
-            let mut sharp = [0.0f32; 12];
-            for i in 0..12 {
-                let l = chroma[(i + 11) % 12];
-                let r = chroma[(i + 1) % 12];
-                sharp[i] = (chroma[i] - 0.5 * (l + r) * 0.5).max(0.0);
+        let mut peaks: Vec<(f32, f32)> = Vec::new(); // (midi, salience)
+        if max_mag > 1e-7 {
+            let floor = max_mag * 0.02;
+            for k in 2..bins - 1 {
+                let m = self.mag[k];
+                if m <= floor {
+                    continue;
+                }
+                if m > self.mag[k - 1] && m >= self.mag[k + 1] {
+                    let f = k as f32 * bin_w;
+                    if f < 40.0 || f > 4500.0 {
+                        continue;
+                    }
+                    let midi = 69.0 + 12.0 * (f / 440.0).log2();
+                    peaks.push((midi.round(), m));
+                }
             }
+        }
+
+        /* discount the harmonics: a partial an octave, a twelfth or a double
+           octave above a stronger one is that one's harmonic, not a note */
+        for i in 0..peaks.len() {
+            for j in 0..peaks.len() {
+                if i == j || peaks[j].1 <= peaks[i].1 * 1.15 {
+                    continue;
+                }
+                let semis = peaks[i].0 - peaks[j].0;
+                for k in 2..=5u32 {
+                    let ideal = 12.0 * (k as f32).log2();
+                    if (semis - ideal).abs() < 1.3 {
+                        peaks[i].1 *= 0.32;
+                        break;
+                    }
+                }
+            }
+        }
+
+        /* chroma from the partials: only the real notes vote */
+        let mut chroma = [0.0f32; 12];
+        let mut chroma_total = 0.0f32;
+        for (midi, amp) in &peaks {
+            let pc = ((midi.round() as i32) % 12 + 12) % 12;
+            chroma[pc as usize] += amp;
+            chroma_total += amp;
+        }
+        if chroma_total > 0.0 {
             let mut mx = 0.0f32;
-            for c in sharp.iter() {
+            for c in chroma.iter() {
                 if *c > mx {
                     mx = *c;
                 }
             }
             if mx > 0.0 {
-                for c in sharp.iter_mut() {
+                for c in chroma.iter_mut() {
                     *c /= mx;
                 }
             }
-            chroma = sharp;
         }
         out.chroma = chroma;
 
@@ -183,6 +197,9 @@ impl Analyzer {
         let (bpm, clarity) = self.estimate_tempo();
         out.bpm = bpm;
         out.clarity = clarity;
+
+        /* the notes sounding right now, and the chord they spell */
+        self.decode_notes(out, &peaks, flux);
 
         /* log-ish spectrum bands for display */
         let mut peak = 0.0f32;
@@ -213,6 +230,54 @@ impl Analyzer {
 
         self.frames += 1;
         out.frames = self.frames as i32;
+    }
+
+    /// Fold the detected partials into the notes that are sounding, then name
+    /// the chord they spell.
+    fn decode_notes(&self, out: &mut SonorAnalysis, peaks: &[(f32, f32)], flux: f32) {
+        if peaks.is_empty() {
+            out.note_count = 0;
+            out.chord_conf = 0.0;
+            out.onset = 0.0;
+            return;
+        }
+
+        /* fold the partials into notes (the same pitch from several partials adds up) */
+        let mut notes: Vec<(i32, f32)> = Vec::new();
+        for (midi, amp) in peaks.iter() {
+            let m = midi.round() as i32;
+            match notes.iter_mut().find(|n| n.0 == m) {
+                Some(n) => n.1 += amp,
+                None => notes.push((m, *amp)),
+            }
+        }
+        let total: f32 = notes.iter().map(|n| n.1).sum();
+        if total > 0.0 {
+            for n in notes.iter_mut() {
+                n.1 /= total;
+            }
+        }
+        notes.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        let count = notes.len().min(16);
+        out.note_count = count as i32;
+        for i in 0..count {
+            out.notes[i] = notes[i].0 as f32;
+            out.note_amp[i] = notes[i].1;
+        }
+
+        /* name the chord */
+        let (root, quality, conf) = detect_chord(&out.chroma);
+        out.chord_root = root;
+        out.chord_quality = quality;
+        out.chord_conf = conf;
+
+        /* the onset of this instant, relative to the recent average */
+        let avg = self.flux_hist.iter().sum::<f32>() / self.flux_hist.len().max(1) as f32;
+        out.onset = if avg > 1e-7 {
+            (flux / (avg * 3.0)).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
     }
 
     fn estimate_tempo(&self) -> (f32, f32) {
@@ -328,8 +393,7 @@ impl Analyzer {
 }
 
 /// Pearson correlation of the chroma against every rotated major/minor profile.
-fn detect_key(chroma: &[f32; 12]) -> (i32, i32, f32) {
-    let mut mean = 0.0f32;
+fn detect_key(chroma: &[f32; 12]) -> (i32, i32, f32) {    let mut mean = 0.0f32;
     for c in chroma.iter() {
         mean += *c;
     }
@@ -375,6 +439,63 @@ fn detect_key(chroma: &[f32; 12]) -> (i32, i32, f32) {
     }
     let confidence = ((best_corr + 1.0) * 0.5).clamp(0.0, 1.0);
     (best_root, best_scale, confidence)
+}
+
+/// Chord templates: (quality index into CHORD_NAMES, the intervals).
+const CHORD_TEMPLATES: [(usize, &[i32]); 15] = [
+    (0, &[0, 4, 7]),
+    (1, &[0, 3, 7]),
+    (2, &[0, 3, 6]),
+    (3, &[0, 4, 8]),
+    (4, &[0, 2, 7]),
+    (5, &[0, 5, 7]),
+    (6, &[0, 4, 7, 11]),
+    (7, &[0, 3, 7, 10]),
+    (8, &[0, 4, 7, 10]),
+    (9, &[0, 3, 6, 10]),
+    (10, &[0, 4, 7, 9]),
+    (11, &[0, 3, 7, 9]),
+    (12, &[0, 4, 7, 10, 2]),
+    (13, &[0, 3, 7, 10, 2]),
+    (14, &[0, 4, 7, 2]),
+];
+
+/// Name the chord the chroma spells.
+///
+/// A template scores the *fraction of the chroma energy it explains*, minus a
+/// small penalty for the extra notes a richer template demands. Explaining
+/// energy — rather than just containing it — keeps a plain triad from being
+/// swallowed by a seventh that happens to fit, while a real seventh still wins
+/// because it explains strictly more.
+fn detect_chord(chroma: &[f32; 12]) -> (i32, i32, f32) {
+    let total: f32 = chroma.iter().sum();
+    if total <= 1e-6 {
+        return (0, 0, 0.0);
+    }
+    let mut best: (f32, i32, i32) = (f32::MIN, 0, 0);
+    let mut second = f32::MIN;
+    for (quality, intervals) in CHORD_TEMPLATES.iter() {
+        for root in 0..12i32 {
+            let mut inside = 0.0f32;
+            for pc in 0..12i32 {
+                if intervals.iter().any(|i| (pc - root).rem_euclid(12) == *i) {
+                    inside += chroma[pc as usize];
+                }
+            }
+            let explained = inside / total;
+            let complexity = 0.11 * (intervals.len() as f32 - 3.0);
+            let score = explained - complexity;
+            if score > best.0 {
+                second = best.0;
+                best = (score, root, *quality as i32);
+            } else if score > second {
+                second = score;
+            }
+        }
+    }
+    let margin = (best.0 - second).max(0.0);
+    let conf = (margin * 3.0).clamp(0.0, 1.0);
+    (best.1, best.2, conf)
 }
 
 /// Scale degrees for a detected key, used by the harmoniser.

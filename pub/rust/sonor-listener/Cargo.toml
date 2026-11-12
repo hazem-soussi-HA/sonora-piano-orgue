@@ -10,10 +10,3 @@ path = "src/main.rs"
 
 [dependencies]
 sonor-core = { path = "../sonor-core" }
-
-[target.'cfg(windows)'.dependencies]
-windows = { version = "0.58", features = [
-    "Win32_Media_Audio",
-    "Win32_System_Com",
-    "Win32_Foundation",
-] }

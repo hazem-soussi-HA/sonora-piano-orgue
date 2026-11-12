@@ -29,7 +29,7 @@ function views() {
     params: new Float32Array(mem, paramsPtr, 40),
     analysis: new Float32Array(mem, analysisPtr, 10 + 12 + 64),
     analysisInt: new Int32Array(mem, analysisPtr, 22),
-    flat: new Float32Array(mem, flatOut, 22)
+    flat: new Float32Array(mem, flatOut, 125)
   };
 }
 
@@ -41,7 +41,7 @@ async function init(url) {
   wasm = instance;
   paramsPtr = wasm.exports.sonor_params_ptr();
   analysisPtr = wasm.exports.sonor_analysis_ptr();
-  flatOut = wasm.exports.sonor_alloc(22 * 4);
+  flatOut = wasm.exports.sonor_alloc(125 * 4);
   analyzer = wasm.exports.analyzer_new(4096);
   return wasm.exports.sonor_abi_version();
 }
@@ -81,14 +81,24 @@ function analyze(msg) {
   new Float32Array(mem, buf, n).set(msg.samples);
   wasm.exports.analyzer_analyze_flat(analyzer, buf, n, msg.sr, msg.hop, flatOut);
   const v = views();
+  /* the flat layout is the documented one: 0..9 scalars, 10..21 chroma,
+     22..85 spectrum, 86..92 decoder, 93.. notes, 109.. amplitudes */
+  const f = v.flat;
   const a = {
-    rms: v.analysis[0], peak: v.analysis[1], centroid: v.analysis[2],
-    flatness: v.analysis[3], flux: v.analysis[4], bpm: v.analysis[5],
-    confidence: v.analysis[6], root: v.analysisInt[7], scale: v.analysisInt[8],
-    clarity: v.analysis[9],
-    chroma: Array.from(v.analysis.slice(10, 22)),
-    spectrum: Array.from(v.analysis.slice(22, 86))
+    rms: f[0], peak: f[1], centroid: f[2], flatness: f[3], flux: f[4], bpm: f[5],
+    confidence: f[6], root: f[7] | 0, scale: f[8] | 0,
+    clarity: f[86],
+    chroma: Array.from(f.slice(10, 22)),
+    spectrum: Array.from(f.slice(22, 86)),
+    onset: f[92],
+    note_count: f[88] | 0,
+    chord_root: f[89] | 0, chord_quality: f[90] | 0, chord_conf: f[91],
+    notes: [], note_amp: []
   };
+  for (let i = 0; i < a.note_count && i < 16; i++) {
+    a.notes.push(f[93 + i] | 0);
+    a.note_amp.push(f[109 + i]);
+  }
   wasm.exports.sonor_free(buf, n);
   return a;
 }

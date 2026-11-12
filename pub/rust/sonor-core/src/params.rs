@@ -91,6 +91,15 @@ pub struct SonorAnalysis {
     pub chroma: [f32; 12],
     pub spectrum: [f32; 64],
     pub frames: i32,
+    /// the notes sounding right now: midi numbers and their salience
+    pub notes: [f32; 16],
+    pub note_amp: [f32; 16],
+    pub note_count: i32,
+    /// the chord sounding right now
+    pub chord_root: i32,
+    pub chord_quality: i32, // index into CHORD_NAMES
+    pub chord_conf: f32,
+    pub onset: f32, // 0..1, the attack of this instant
 }
 
 impl Default for SonorAnalysis {
@@ -109,9 +118,22 @@ impl Default for SonorAnalysis {
             chroma: [0.0; 12],
             spectrum: [0.0; 64],
             frames: 0,
+            notes: [0.0; 16],
+            note_amp: [0.0; 16],
+            note_count: 0,
+            chord_root: 0,
+            chord_quality: 0,
+            chord_conf: 0.0,
+            onset: 0.0,
         }
     }
 }
+
+/// Chord qualities the decoder can name, in the order of `chord_quality`.
+pub const CHORD_NAMES: [&str; 16] = [
+    "", "m", "dim", "aug", "sus2", "sus4", "maj7", "m7", "7", "m7b5", "6", "m6", "9", "m9", "add9",
+    "maj9",
+];
 
 pub const SCALE_MAJOR: i32 = 0;
 pub const SCALE_MINOR: i32 = 1;

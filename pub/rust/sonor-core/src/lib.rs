@@ -66,6 +66,13 @@ static ANALYSIS: SyncCell<SonorAnalysis> = SyncCell(UnsafeCell::new(SonorAnalysi
     chroma: [0.0; 12],
     spectrum: [0.0; 64],
     frames: 0,
+    notes: [0.0; 16],
+    note_amp: [0.0; 16],
+    note_count: 0,
+    chord_root: 0,
+    chord_quality: 0,
+    chord_conf: 0.0,
+    onset: 0.0,
 }));
 
 /// Analyzer instances live in a small registry so the host can keep several
@@ -85,7 +92,7 @@ fn registry() -> &'static mut Registry {
 /// ABI version — bumped when the struct layout changes.
 #[no_mangle]
 pub extern "C" fn sonor_abi_version() -> u32 {
-    3
+    4
 }
 
 /// Pointer to the parameter block the host writes before rendering.
@@ -187,13 +194,19 @@ pub unsafe extern "C" fn analyzer_analyze(handle: u32, data: *const f32, n: usiz
     0
 }
 
-/// Convenience: analyse and return the results as a flat f32 array
-/// (level, centroid, flux, bpm, confidence, root, scale, clarity, chroma[12]).
+/// Convenience: analyse and return the results as a flat f32 array.
 ///
-/// The caller must provide at least 22 f32 slots.
+/// Layout (125 floats):
+///   0..9    rms, peak, centroid, flatness, flux, bpm, confidence, root, scale
+///   10..21  chroma[12]
+///   22..85  spectrum[64]
+///   86..91  clarity, frames, note_count, chord_root, chord_quality, chord_conf
+///   92      onset
+///   93..108 notes[16]      (midi numbers)
+///   109..124 note_amp[16]  (salience)
 ///
 /// # Safety
-/// `out` must point to at least 22 writable f32 values.
+/// `out` must point to at least 125 writable f32 values.
 #[no_mangle]
 pub unsafe extern "C" fn analyzer_analyze_flat(
     handle: u32,
@@ -208,7 +221,7 @@ pub unsafe extern "C" fn analyzer_analyze_flat(
         return rc;
     }
     let a = &*ANALYSIS.0.get();
-    let o = std::slice::from_raw_parts_mut(out, 22);
+    let o = std::slice::from_raw_parts_mut(out, 125);
     o[0] = a.rms;
     o[1] = a.peak;
     o[2] = a.centroid;
@@ -222,7 +235,28 @@ pub unsafe extern "C" fn analyzer_analyze_flat(
     for i in 0..12 {
         o[10 + i] = a.chroma[i];
     }
+    for i in 0..64 {
+        o[22 + i] = a.spectrum[i];
+    }
+    o[86] = a.clarity;
+    o[87] = a.frames as f32;
+    o[88] = a.note_count as f32;
+    o[89] = a.chord_root as f32;
+    o[90] = a.chord_quality as f32;
+    o[91] = a.chord_conf;
+    o[92] = a.onset;
+    for i in 0..16 {
+        o[93 + i] = a.notes[i];
+        o[109 + i] = a.note_amp[i];
+    }
     0
+}
+
+/// The names of the chord qualities, as a NUL separated string.
+/// The caller must not free it.
+#[no_mangle]
+pub extern "C" fn sonor_chord_names_ptr() -> *const u8 {
+    crate::params::CHORD_NAMES.join("\n").as_ptr()
 }
 
 /// Scale degrees of the detected key, written into `out` (7 entries).

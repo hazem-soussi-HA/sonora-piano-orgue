@@ -15,6 +15,8 @@ use std::io::{Read, Write};
 const FRAME: usize = 2048;
 const HOP: usize = 1024;
 
+mod wasapi;
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut backend = String::from("wasapi");
@@ -97,7 +99,7 @@ fn print_usage() {
 }
 
 fn emit(a: &sonor_core::params::SonorAnalysis) {
-    let mut out = String::with_capacity(512);
+    let mut out = String::with_capacity(768);
     out.push_str("{\"rms\":");
     out.push_str(&format!("{:.5}", a.rms));
     out.push_str(",\"peak\":");
@@ -125,7 +127,26 @@ fn emit(a: &sonor_core::params::SonorAnalysis) {
         }
         out.push_str(&format!("{:.4}", c));
     }
-    out.push_str("],\"spectrum\":[");
+    out.push_str("],\"notes\":[");
+    for i in 0..a.note_count.max(0) as usize {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str(&format!(
+            "{{\"midi\":{},\"amp\":{:.4}}}",
+            a.notes[i] as i32,
+            a.note_amp[i]
+        ));
+    }
+    out.push_str("],\"chord\":{\"root\":");
+    out.push_str(&a.chord_root.to_string());
+    out.push_str(",\"quality\":");
+    out.push_str(&a.chord_quality.to_string());
+    out.push_str(",\"conf\":");
+    out.push_str(&format!("{:.4}", a.chord_conf));
+    out.push_str("},\"onset\":");
+    out.push_str(&format!("{:.4}", a.onset));
+    out.push_str(",\"spectrum\":[");
     for (k, c) in a.spectrum.iter().enumerate() {
         if k > 0 {
             out.push(',');
@@ -276,191 +297,52 @@ fn run_ffmpeg(
 /* ------------------------------------------------------------------ */
 fn list_capture_devices() {
     #[cfg(windows)]
-    wasapi::list_devices();
+    {
+        match wasapi::Loopback::open() {
+            Ok(l) => {
+                eprintln!(
+                    "sonor-listener: default output — {} ch @ {} Hz",
+                    l.channels, l.sample_rate
+                );
+            }
+            Err(e) => eprintln!("sonor-listener: {}", e),
+        }
+    }
     #[cfg(not(windows))]
     eprintln!("sonor-listener: device listing is only available on windows");
 }
 
 fn run_wasapi(analyzer: &mut Analyzer, analysis: &mut sonor_core::params::SonorAnalysis) {
     #[cfg(windows)]
-    wasapi::capture_loop(analyzer, analysis);
+    {
+        let mut loopback = match wasapi::Loopback::open() {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("sonor-listener: {}", e);
+                return;
+            }
+        };
+        eprintln!(
+            "sonor-listener: loopback on the default output — {} ch @ {} Hz, {} bit {}",
+            loopback.channels,
+            loopback.sample_rate,
+            loopback.bits,
+            if loopback.float_format { "float" } else { "pcm" }
+        );
+        let sr = loopback.sample_rate as f32;
+        let mut pending: Vec<f32> = Vec::with_capacity(FRAME * 8);
+        loop {
+            loopback.read(&mut pending);
+            while pending.len() >= FRAME {
+                analyzer.analyze(&pending[..FRAME], sr, HOP as f32, analysis);
+                emit(analysis);
+                pending.drain(0..HOP);
+            }
+            if pending.is_empty() {
+                std::thread::sleep(std::time::Duration::from_millis(8));
+            }
+        }
+    }
     #[cfg(not(windows))]
     eprintln!("sonor-listener: wasapi capture is only available on windows");
-}
-
-#[cfg(windows)]
-mod wasapi {
-    use super::*;
-    use windows::Win32::Media::Audio::{
-        eConsole, eRender, IAudioCaptureClient, IAudioClient, IMMDeviceEnumerator, MMDeviceEnumerator,
-        DEVICE_STATE_ACTIVE,
-        AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK,
-    };
-    use windows::Win32::System::Com::{
-        CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED,
-    };
-
-    /// Loopback capture of the default render endpoint.
-    ///
-    /// WASAPI loopback gives us exactly what the speakers are playing, with no
-    /// extra driver: the render endpoint is opened a second time as a capture
-    /// client with AUDCLNT_STREAMFLAGS_LOOPBACK.
-    pub fn capture_loop(analyzer: &mut Analyzer, analysis: &mut sonor_core::params::SonorAnalysis) {
-        unsafe {
-            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
-            let enumerator: IMMDeviceEnumerator = match CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL) {
-                Ok(e) => e,
-                Err(e) => {
-                    eprintln!("sonor-listener: no audio stack: {:?}", e);
-                    CoUninitialize();
-                    return;
-                }
-            };
-            let device = match enumerator.GetDefaultAudioEndpoint(eRender, eConsole) {
-                Ok(d) => d,
-                Err(e) => {
-                    eprintln!("sonor-listener: no default output device: {:?}", e);
-                    CoUninitialize();
-                    return;
-                }
-            };
-            let client: IAudioClient = match device.Activate(CLSCTX_ALL, None) {
-                Ok(c) => c,
-                Err(e) => {
-                    eprintln!("sonor-listener: cannot activate the audio client: {:?}", e);
-                    CoUninitialize();
-                    return;
-                }
-            };
-            let format = match client.GetMixFormat() {
-                Ok(f) => f,
-                Err(e) => {
-                    eprintln!("sonor-listener: cannot read the mix format: {:?}", e);
-                    CoUninitialize();
-                    return;
-                }
-            };
-            let channels = (*format).nChannels as usize;
-            let sample_rate = (*format).nSamplesPerSec;
-            let bits = (*format).wBitsPerSample;
-            let block_align = (*format).nBlockAlign as usize;
-            let is_float = (*format).wFormatTag == 3;
-            eprintln!(
-                "sonor-listener: loopback on the default output — {} ch @ {} Hz, {} bit {}",
-                channels,
-                sample_rate,
-                bits,
-                if is_float { "float" } else { "pcm" }
-            );
-
-            let buffer_frames = ((sample_rate / 10).max(1024)) as i64;
-            if client
-                .Initialize(
-                    AUDCLNT_SHAREMODE_SHARED,
-                    AUDCLNT_STREAMFLAGS_LOOPBACK,
-                    buffer_frames,
-                    0i64,
-                    format,
-                    None,
-                )
-                .is_err()
-            {
-                eprintln!("sonor-listener: cannot initialise the capture client");
-                CoUninitialize();
-                return;
-            }
-            let capture: IAudioCaptureClient = match client.GetService() {
-                Ok(c) => c,
-                Err(e) => {
-                    eprintln!("sonor-listener: no capture service: {:?}", e);
-                    CoUninitialize();
-                    return;
-                }
-            };
-            if client.Start().is_err() {
-                eprintln!("sonor-listener: cannot start the capture client");
-                CoUninitialize();
-                return;
-            }
-
-            let mut pending: Vec<f32> = Vec::with_capacity(FRAME * 8);
-            loop {
-                let mut packet = 0u32;
-                if capture.GetNextPacketSize().is_ok() {
-                    packet = capture.GetNextPacketSize().unwrap_or(0);
-                }
-                if packet == 0 {
-                    std::thread::sleep(std::time::Duration::from_millis(8));
-                    continue;
-                }
-                let mut data: *mut u8 = std::ptr::null_mut();
-                let mut frames = 0u32;
-                let mut flags = 0u32;
-                if capture
-                    .GetBuffer(&mut data, &mut frames, &mut flags, None, None)
-                    .is_err()
-                {
-                    break;
-                }
-                let silent = flags & (AUDCLNT_BUFFERFLAGS_SILENT.0 as u32) != 0;
-                if !silent && !data.is_null() {
-                    let total = frames as usize * block_align;
-                    if is_float {
-                        let slice = std::slice::from_raw_parts(data as *const f32, total / 4);
-                        push_mono(&mut pending, slice, channels);
-                    } else {
-                        let slice = std::slice::from_raw_parts(data as *const i16, total / 2);
-                        let scaled: Vec<f32> = slice.iter().map(|s| *s as f32 / 32768.0).collect();
-                        push_mono(&mut pending, &scaled, channels);
-                    }
-                }
-                let _ = capture.ReleaseBuffer(frames);
-                while pending.len() >= FRAME {
-                    analyzer.analyze(&pending[..FRAME], sample_rate as f32, HOP as f32, analysis);
-                    emit(analysis);
-                    pending.drain(0..HOP);
-                }
-            }
-            let _ = client.Stop();
-            CoUninitialize();
-        }
-    }
-
-    fn push_mono(dst: &mut Vec<f32>, interleaved: &[f32], channels: usize) {
-        if channels <= 1 {
-            dst.extend_from_slice(interleaved);
-            return;
-        }
-        let mut frame = [0.0f32; 8];
-        let ch = channels.min(8);
-        for chunk in interleaved.chunks(ch) {
-            let n = chunk.len();
-            for i in 0..n {
-                frame[i] = chunk[i];
-            }
-            let sum: f32 = frame[..n].iter().sum();
-            dst.push(sum / n as f32);
-        }
-    }
-
-    pub fn list_devices() {
-        unsafe {
-            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
-            if let Ok(enumerator) =
-                CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_ALL)
-            {
-                if let Ok(collection) = enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE) {
-                    let count = collection.GetCount().unwrap_or(0);
-                    for i in 0..count {
-                        if let Ok(device) = collection.Item(i) {
-                            if let Ok(id) = device.GetId() {
-                                println!("{}", id.to_string().unwrap_or_default());
-                            }
-                        }
-                    }
-                }
-            }
-            CoUninitialize();
-        }
-    }
 }

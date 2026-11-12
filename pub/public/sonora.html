@@ -81,7 +81,17 @@ label.mini{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-trans
 .meter-row .bar i{display:block;height:100%;width:0%;background:linear-gradient(90deg,#48e0a0,#ffb347,#ff5a3b);transition:width .08s linear}
 .meter-row span:last-child{text-align:right;color:var(--gold)}
 .engine-badge{font-family:var(--mono);font-size:9px;letter-spacing:.14em;color:var(--purple);border:1px solid rgba(160,124,255,.4);border-radius:5px;padding:3px 7px}
-/* studio */
+/* decoder */
+.decoder{margin:12px 0}
+.decoder-grid{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
+.mandala{width:340px;height:340px;display:block;margin:0 auto}
+.waterfall{width:100%;height:150px;display:block;background:#06060a;border:1px solid #1c1c24;border-radius:8px}
+.notes-list{font-family:var(--mono);font-size:11px;line-height:1.9;color:#bdb6ab;max-height:150px;overflow:auto}
+.notes-list b{color:var(--gold)}
+.chord-big{font-family:var(--mono);font-size:30px;letter-spacing:.06em;color:var(--gold);line-height:1.1}
+.chord-sub{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#6f6b64;margin-top:2px}
+@media(max-width:1100px){.decoder-grid{grid-template-columns:auto 1fr}.decoder-grid>*:nth-child(3){grid-column:1/-1}}
+@media(max-width:760px){.decoder-grid{grid-template-columns:1fr}.mandala{width:100%;max-width:340px}}
 .studio{margin:12px 0}
 .studio-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:20px;margin-top:12px}
 .studio-col{min-width:0}
@@ -217,6 +227,24 @@ footer{padding:16px 0 30px;color:#5f5b55;font-family:var(--mono);font-size:10px;
       </div>
     </div>
   </section>
+  <section class="panel decoder">
+    <h2>Decoder <i>les clés en dimension</i></h2>
+    <div class="body">
+      <div class="decoder-grid">
+        <canvas class="mandala" id="mandala" width="680" height="680"></canvas>
+        <div>
+          <canvas class="waterfall" id="waterfall" width="760" height="300"></canvas>
+          <div class="hint" style="margin-top:8px">Le <b>mandala</b> place chaque note dans l’espace des tonalités : l’angle est le cercle des quintes, le rayon l’octave, la taille l’énergie. Les liens dessinent l’accord.</div>
+        </div>
+        <div>
+          <div class="chord-big" id="chordBig">—</div>
+          <div class="chord-sub" id="chordSub">en attente du son</div>
+          <div class="notes-list" id="noteList">—</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="panel studio">
     <h2>Hazoom Live Studio <i>DJ × Orgue × Healer</i></h2>
     <div class="body">
@@ -1095,6 +1123,7 @@ function drawScope(){
   }
   $('#voices').textContent=voices.size+' voix';
   studioFrame();
+  drawDecoder();
 }
 requestAnimationFrame(drawScope);
 
@@ -1364,6 +1393,31 @@ function applyAether(a){
   AETHER.root=a.root;AETHER.scale=a.scale;AETHER.bpm=a.bpm;AETHER.conf=a.confidence;
   AETHER.clarity=a.clarity;AETHER.rms=a.rms;AETHER.centroid=a.centroid;AETHER.flux=a.flux;
   AETHER.chroma=a.chroma;AETHER.spectrum=a.spectrum;
+  /* the decoder: the notes and the chord, however they arrive */
+  DECODER.chroma=a.chroma||DECODER.chroma;
+  DECODER.spectrum=a.spectrum||DECODER.spectrum;
+  DECODER.key=a.root!==undefined?a.root:DECODER.key;
+  DECODER.keyConf=a.confidence!==undefined?a.confidence:DECODER.keyConf;
+  DECODER.scale=a.scale!==undefined?a.scale:DECODER.scale;
+  DECODER.onset=a.onset||0;
+  if(a.notes&&a.notes.length){
+    if(typeof a.notes[0]==='object'){
+      DECODER.notes=a.notes.map(n=>n.midi);
+      DECODER.noteAmp=a.notes.map(n=>n.amp);
+    }else{
+      DECODER.notes=a.notes.slice();
+      DECODER.noteAmp=(a.note_amp||a.noteAmp||[]).slice();
+    }
+  }
+  if(a.chord){
+    DECODER.chordRoot=a.chord.root;DECODER.chordQuality=a.chord.quality;DECODER.chordConf=a.chord.conf;
+  }else if(a.chord_root!==undefined){
+    DECODER.chordRoot=a.chord_root;DECODER.chordQuality=a.chord_quality;DECODER.chordConf=a.chord_conf||0;
+  }else if(a.chroma){
+    /* the frame carries no chord: name it here from the chroma */
+    const c=chordFromChroma(a.chroma);
+    DECODER.chordRoot=c.root;DECODER.chordQuality=c.quality;DECODER.chordConf=c.conf;
+  }
   /* the live studio plays with the record */
   if(DJ)DJ.react(a);
   /* --- adaptation --- */
@@ -1420,6 +1474,210 @@ function drawAether(){
   $('#bpmVal').textContent=bpmOk?Math.round(AETHER.bpm)+' bpm':'—';
   $('#aetherKey').textContent=(AETHER.conf>0.4?(NOTE_LABELS[AETHER.root]+' '+(AETHER.scale?'min':'maj')):'no key');
   $('#aetherBpm').textContent=bpmOk?Math.round(AETHER.bpm)+' bpm':'— bpm';
+}
+
+/* ============================ the decoder ============================ */
+const FIFTHS=[0,7,2,9,4,11,6,1,8,3,10,5];      /* the circle of fifths */
+const CHORD_Q=['','m','dim','aug','sus2','sus4','maj7','m7','7','m7b5','6','m6','9','m9','add9','maj9'];
+const CHORD_IV=[[0,4,7],[0,3,7],[0,3,6],[0,4,8],[0,2,7],[0,5,7],[0,4,7,11],[0,3,7,10],[0,4,7,10],
+  [0,3,6,10],[0,4,7,9],[0,3,7,9],[0,4,7,10,2],[0,3,7,10,2],[0,4,7,2],[0,4,7,11,2]];
+const DECODER={
+  chroma:new Array(12).fill(0),spectrum:new Array(64).fill(0),
+  notes:[],noteAmp:[],chordRoot:0,chordQuality:0,chordConf:0,onset:0,
+  key:0,keyConf:0,rotation:0,flash:0,lastChord:''
+};
+const NOTE_LABELS2=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const midiName=m=>NOTE_LABELS2[((m%12)+12)%12]+(Math.floor(m/12)-1);
+const chordName=(root,q)=>{
+  const iv=(CHORD_IV[q]||CHORD_IV[0]);
+  return NOTE_LABELS2[root]+(CHORD_Q[q]||'')+' ('+iv.map(i=>NOTE_LABELS2[(root+i)%12]).join(' ')+')';
+};
+
+/* The chord from a chroma vector — the same templates the Rust core uses.
+   It runs here so the decoder works whether the notes come from the native
+   listener or from the browser's own capture. */
+function chordFromChroma(chroma){
+  if(!chroma)return{root:0,quality:0,conf:0};
+  let total=0;for(let i=0;i<12;i++)total+=chroma[i]||0;
+  if(total<=1e-6)return{root:0,quality:0,conf:0};
+  let best=-1e9,second=-1e9,bRoot=0,bQual=0;
+  for(let q=0;q<CHORD_IV.length;q++){
+    const iv=CHORD_IV[q];
+    for(let root=0;root<12;root++){
+      let inside=0;
+      for(let pc=0;pc<12;pc++){
+        if(iv.some(i=>((pc-root)%12+12)%12===i))inside+=chroma[pc]||0;
+      }
+      const score=inside/total-0.11*(iv.length-3);
+      if(score>best){second=best;best=score;bRoot=root;bQual=q;}
+      else if(score>second)second=score;
+    }
+  }
+  return{root:bRoot,quality:bQual,conf:clamp((best-second)*3,0,1)};
+}
+
+function drawMandala(){
+  const cv=$('#mandala');if(!cv)return;
+  const g=cv.getContext('2d');
+  const w=cv.width,h=cv.height,cx=w/2,cy=h/2,R=Math.min(w,h)*0.44;
+  g.clearRect(0,0,w,h);
+
+  /* the octave layers: the second dimension */
+  const LAYERS=5, base=48;
+  for(let l=0;l<LAYERS;l++){
+    const r=R*(0.26+l*0.185);
+    g.beginPath();g.arc(cx,cy,r,0,Math.PI*2);
+    g.strokeStyle=l===0?'rgba(255,179,71,.22)':'rgba(255,255,255,.05)';
+    g.lineWidth=1;g.stroke();
+    g.fillStyle='rgba(255,255,255,.22)';g.font='11px ui-monospace,monospace';g.textAlign='center';
+    g.fillText(midiName(base+l*12),cx,cy-r-8);
+  }
+  /* the twelve axes */
+  for(let i=0;i<12;i++){
+    const a=-Math.PI/2+i*Math.PI/6;
+    g.beginPath();
+    g.moveTo(cx+Math.cos(a)*R*0.16,cy+Math.sin(a)*R*0.16);
+    g.lineTo(cx+Math.cos(a)*R*1.04,cy+Math.sin(a)*R*1.04);
+    g.strokeStyle='rgba(255,255,255,.06)';g.lineWidth=1;g.stroke();
+  }
+
+  g.save();
+  g.translate(cx,cy);
+  g.rotate(DECODER.rotation);
+
+  /* the chroma: a petal per key, its size the energy of that pitch class */
+  for(let i=0;i<12;i++){
+    const pc=FIFTHS[i];
+    const e=clamp(DECODER.chroma[pc]||0,0,1);
+    if(e<0.02)continue;
+    g.save();
+    g.rotate(i*Math.PI/6);
+    const rr=R*0.62;
+    const petal=R*(0.10+e*0.30);
+    g.beginPath();
+    g.ellipse(rr,0,petal,petal*0.42,0,0,Math.PI*2);
+    const grd=g.createRadialGradient(rr,0,0,rr,0,petal*1.6);
+    grd.addColorStop(0,'rgba(78,201,224,'+(0.10+e*0.45)+')');
+    grd.addColorStop(1,'rgba(78,201,224,0)');
+    g.fillStyle=grd;g.fill();
+    g.strokeStyle='rgba(120,220,240,'+(0.12+e*0.5)+')';g.lineWidth=1+e;g.stroke();
+    g.restore();
+  }
+
+  /* the chord: the notes it spans, joined */
+  const iv=CHORD_IV[DECODER.chordQuality]||CHORD_IV[0];
+  if(iv.length&&DECODER.chordConf>0.05){
+    const pts=iv.map(d=>{
+      const idx=FIFTHS.indexOf((DECODER.chordRoot+d)%12);
+      const a=-Math.PI/2+idx*Math.PI/6;
+      return [Math.cos(a)*R*0.62,Math.sin(a)*R*0.62];
+    });
+    g.beginPath();
+    pts.forEach((p,i)=>{i?g.lineTo(p[0],p[1]):g.moveTo(p[0],p[1]);});
+    g.closePath();
+    g.fillStyle='rgba(255,179,71,.10)';g.fill();
+    g.strokeStyle='rgba(255,179,71,'+(0.3+DECODER.chordConf*0.6)+')';g.lineWidth=1.6;g.stroke();
+    pts.forEach(p=>{
+      g.beginPath();g.arc(p[0],p[1],3.4,0,Math.PI*2);
+      g.fillStyle='rgba(255,179,71,.9)';g.fill();
+    });
+  }
+
+  /* the notes: their exact octave on the ring */
+  for(let i=0;i<DECODER.notes.length;i++){
+    const m=DECODER.notes[i];
+    const amp=DECODER.noteAmp[i]||0;
+    const pc=((m%12)+12)%12;
+    const idx=FIFTHS.indexOf(pc);
+    if(idx<0)continue;
+    const a=-Math.PI/2+idx*Math.PI/6;
+    const layer=clamp(Math.round((m-48)/12),0,LAYERS-1);
+    const r=R*(0.26+layer*0.185);
+    const x=Math.cos(a)*r,y=Math.sin(a)*r;
+    const s=3+amp*13;
+    const grd=g.createRadialGradient(x,y,0,x,y,s*1.8);
+    grd.addColorStop(0,'rgba(255,235,190,'+(0.35+amp*0.6)+')');
+    grd.addColorStop(1,'rgba(255,179,71,0)');
+    g.beginPath();g.arc(x,y,s*1.8,0,Math.PI*2);g.fillStyle=grd;g.fill();
+    g.beginPath();g.arc(x,y,s*0.42,0,Math.PI*2);
+    g.fillStyle='rgba(255,245,225,.95)';g.fill();
+  }
+  g.restore();
+
+  /* the key: a ring on its axis and its name */
+  const ki=FIFTHS.indexOf(((DECODER.key%12)+12)%12);
+  if(ki>=0){
+    const a=-Math.PI/2+ki*Math.PI/6;
+    g.beginPath();
+    g.arc(cx+Math.cos(a)*R*1.06,cy+Math.sin(a)*R*1.06,7+DECODER.keyConf*7,0,Math.PI*2);
+    g.strokeStyle='rgba(255,179,71,'+(0.4+DECODER.keyConf*0.6)+')';g.lineWidth=2;g.stroke();
+    g.fillStyle='rgba(255,179,71,.95)';g.font='bold 13px ui-monospace,monospace';g.textAlign='center';g.textBaseline='middle';
+    g.fillText(NOTE_LABELS2[DECODER.key%12],cx+Math.cos(a)*(R*1.06+16),cy+Math.sin(a)*(R*1.06+16));
+  }
+  /* the onset: a flash at the centre */
+  if(DECODER.flash>0.01){
+    g.beginPath();g.arc(cx,cy,R*0.2*DECODER.flash,0,Math.PI*2);
+    g.fillStyle='rgba(255,255,255,'+(DECODER.flash*0.5)+')';g.fill();
+  }
+}
+
+function drawWaterfall(){
+  const cv=$('#waterfall');if(!cv)return;
+  const g=cv.getContext('2d');
+  const w=cv.width,h=cv.height;
+  /* keep a history of spectra and redraw: no self-copying, no smearing */
+  const COLS=Math.max(60,Math.round(w/2));
+  if(!DECODER.hist||DECODER.hist.length!==COLS){
+    DECODER.hist=new Array(COLS).fill(null);
+    DECODER.histPos=0;
+  }
+  DECODER.hist[DECODER.histPos]=DECODER.spectrum;
+  DECODER.histPos=(DECODER.histPos+1)%COLS;
+
+  g.clearRect(0,0,w,h);
+  const cw=w/COLS;
+  for(let i=0;i<COLS;i++){
+    const spec=DECODER.hist[(DECODER.histPos+i)%COLS];
+    if(!spec)continue;
+    const x=i*cw;
+    const age=i/COLS;
+    for(let b=0;b<64;b++){
+      const v=clamp(spec[b]||0,0,1);
+      if(v<0.02)continue;
+      const y=h-(b+1)*(h/64);
+      const a=(0.12+v*0.8)*(0.35+age*0.65);
+      g.fillStyle='rgba('+Math.round(60+v*195)+','+Math.round(120+v*120)+','+Math.round(180+v*60)+','+a.toFixed(3)+')';
+      g.fillRect(x,y,Math.ceil(cw)+0.5,h/64+1);
+    }
+  }
+  /* the detected notes, marked on the frequency axis */
+  g.font='10px ui-monospace,monospace';g.textAlign='left';
+  for(let i=0;i<DECODER.notes.length;i++){
+    const m=DECODER.notes[i];
+    const f=440*Math.pow(2,(m-69)/12);
+    if(f<50||f>8000)continue;
+    const y=h-clamp((Math.log2(f/50)/Math.log2(8000/50))*h,0,h);
+    g.strokeStyle='rgba(255,255,255,.22)';g.lineWidth=1;
+    g.beginPath();g.moveTo(0,y);g.lineTo(w,y);g.stroke();
+    g.fillStyle='rgba(255,220,160,.85)';
+    g.fillText(midiName(m),4,y-3);
+  }
+}
+
+function drawDecoder(){
+  DECODER.flash=Math.max(0,DECODER.flash*0.86);
+  if(DECODER.onset>0.35)DECODER.flash=Math.min(1,DECODER.flash+DECODER.onset*0.6);
+  /* the mandala turns with the low end, as the nano mandala does */
+  DECODER.rotation+=0.0016+clamp((DECODER.spectrum[0]||0)+(DECODER.spectrum[1]||0),0,1)*0.006;
+  drawMandala();
+  drawWaterfall();
+  /* the readouts */
+  const name=chordName(DECODER.chordRoot,DECODER.chordQuality);
+  $('#chordBig').textContent=DECODER.chordConf>0.08?name:'—';
+  $('#chordSub').textContent=(DECODER.keyConf>0.4?(NOTE_LABELS2[DECODER.key%12]+' '+(DECODER.scale?'min':'maj')):'—')
+    +' · conf '+Math.round(DECODER.chordConf*100)+'% · key '+Math.round(DECODER.keyConf*100)+'%';
+  const list=DECODER.notes.slice(0,10).map((m,i)=>'<b>'+midiName(m)+'</b> '+Math.round((DECODER.noteAmp[i]||0)*100)+'%').join('  ·  ');
+  $('#noteList').innerHTML=list||'—';
 }
 
 /* ============================ the live studio ============================ */

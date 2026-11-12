@@ -50,6 +50,7 @@ node server.mjs
 ```
 
 * instrument + studio — <http://localhost:8787/sonora.html>
+* **application laboratory** — <http://localhost:8787/lab.html>
 * desk — <http://localhost:8787/>
 
 No install, no build step: the prebuilt `sonor.wasm` and `sonor-listener.exe` are in the repo.
@@ -82,6 +83,42 @@ swallowed by a seventh that happens to fit.
 Verified against known chords: `A C# E` → **A major** (notes E4 · A3 · C#4, no chroma
 leakage), `F# A C#` → **F# minor**, `A C# E G` → **A7**, `C E G B` → **Cmaj7**, a lone
 `C3` → **C**.
+
+---
+
+## SONORA LAB — the application laboratory
+
+The instrument plays. The **lab** is where the science is kept honest: every
+protocol carries a grade, a dose, a source, and an explicit *"does not claim"*.
+
+![SONORA LAB](docs/lab.png)
+
+| grade | meaning |
+|---|---|
+| **A** | mechanism established **and** replicated — paced breathing at the baroreflex resonance (0.1 Hz); music at 60–90 BPM |
+| **B** | the mechanism is real and measurable, the outcome is small or mixed — auditory entrainment, singing bowls, vibroacoustic therapy, interoceptive attention |
+| **C** | tradition or ritual, no mechanism found — the solfeggio set, Schumann coupling. Kept as *carriers*, not as causes |
+| **D** | not supported — Somatic Experiencing as clinical treatment, "sound repairs DNA". Named so they can be answered |
+
+Three instruments, all measurable:
+
+- **Resonance** — a breathing guide at the baroreflex resonance with an
+  honest self-report calibration (it says it is a proxy, not an ECG).
+- **Entrainment** — binaural beats with the parameters the literature says
+  matter: a low carrier, unmasked, ≥10 min, exposure *before* the task.
+- **Somatic** — a guided interoceptive attention sequence, with the solfeggio
+  tones as carriers.
+
+Plus a **dose ledger**: the WHO / NIOSH / NIDCD / EPA budgets and the
+contraindications, with the laboratory's own output measured and shown live —
+because no decibel measurement has ever been published for a sound bath.
+
+And a **session ledger**: n-of-1 records of what you actually did and how it
+landed, stored in your browser and exported as JSON. The doctoral project needs
+honest data, and the only honest data is the data you lived.
+
+The protocol library is served by the private doctoral service and synced at
+load; the page keeps an offline copy so the lab still works alone.
 
 ---
 
@@ -203,6 +240,7 @@ server.mjs              node server: static + /api + the aether websocket hub + 
 pub/public/
   index.html            the SOLVE ET COAGULA live desk
   sonora.html           SONORA · PIANO ORGUE — instrument, aether panel, live studio
+  lab.html              SONORA LAB — the evidence-graded application laboratory
   dj-live.js            the realtime techno engine that plays with the record
   sonor-worker.js       drives the Rust/WASM core off the main thread
   sonor.wasm            the Rust machine (voice + analysis)

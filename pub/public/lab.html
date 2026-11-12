@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SONORA LAB · Application Laboratory</title>
+<style>
+:root{--bg:#08080b;--panel:#121218;--line:#26262f;--text:#eae6df;--muted:#8b877e;--gold:#ffb347;--red:#ff5a3b;--green:#48e0a0;--cyan:#4ec9e0;--purple:#a07cff;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,sans-serif;min-height:100vh}
+body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(1100px 560px at 50% -10%,rgba(255,179,71,.06),transparent 60%),radial-gradient(800px 460px at 12% 108%,rgba(78,201,224,.05),transparent 60%)}
+.wrap{position:relative;z-index:1;max-width:1400px;margin:0 auto;padding:0 14px}
+header{position:sticky;top:0;z-index:30;background:rgba(8,8,11,.94);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:9px 0}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.brand{font-family:var(--mono);font-size:13px;letter-spacing:.3em;color:var(--gold);text-transform:uppercase}
+.brand b{color:var(--red);font-weight:normal}
+.brand span{color:var(--muted);font-size:9px;letter-spacing:.2em;margin-left:10px}
+button,.btn{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;background:#14141b;border:1px solid var(--line);color:var(--muted);padding:7px 11px;border-radius:6px;cursor:pointer;transition:.14s;white-space:nowrap}
+button:hover,.btn:hover{color:var(--text);border-color:#3d3d4b;background:#191921}
+button.on,button.active{background:rgba(255,179,71,.14);border-color:var(--gold);color:var(--gold)}
+button.rec.on{background:rgba(255,90,59,.2);border-color:var(--red);color:var(--red)}
+a{color:var(--cyan);text-decoration:none}
+.status{font-family:var(--mono);font-size:10px;color:var(--muted);flex:1;min-width:160px;text-align:right}
+.status.err{color:var(--red)}.status.ok{color:var(--green)}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:14px;margin:14px 0}
+.panel{background:linear-gradient(180deg,#15151b,#0e0e13);border:1px solid var(--line);border-radius:12px;padding:13px 14px 16px;box-shadow:0 10px 30px rgba(0,0,0,.45);min-width:0}
+.panel h2{margin:0 0 10px;font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold);display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding-bottom:8px;border-bottom:1px solid #22222b}
+.panel h2 i{font-style:normal;color:#66626c;font-size:9px;letter-spacing:.14em}
+.card{border:1px solid #23232c;border-radius:9px;padding:11px 12px;margin-bottom:9px;background:#0e0e14}
+.card.on{border-color:var(--gold);background:#12121a}
+.card-head{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.card-head b{font-size:13px;font-weight:600}
+.grade{font-family:var(--mono);font-size:9px;letter-spacing:.1em;padding:2px 6px;border-radius:4px;font-weight:700}
+.g-A{background:rgba(72,224,160,.16);color:var(--green);border:1px solid rgba(72,224,160,.4)}
+.g-B{background:rgba(78,201,224,.14);color:var(--cyan);border:1px solid rgba(78,201,224,.35)}
+.g-C{background:rgba(255,179,71,.13);color:var(--gold);border:1px solid rgba(255,179,71,.32)}
+.g-D{background:rgba(255,90,59,.13);color:var(--red);border:1px solid rgba(255,90,59,.32)}
+.card p{margin:6px 0 0;font-size:12px;color:#bdb6ab}
+.card .meta{margin-top:7px;font-family:var(--mono);font-size:9.5px;line-height:1.75;color:#7b776f}
+.card .meta b{color:var(--gold);font-weight:400}
+.card .not{margin-top:7px;font-family:var(--mono);font-size:9.5px;color:#8d6a62;line-height:1.65;border-left:2px solid rgba(255,90,59,.35);padding-left:8px}
+.lab-col{display:flex;flex-direction:column;gap:12px}
+.dial{width:100%;height:210px;display:block;background:#07070b;border:1px solid #1e1e26;border-radius:10px}
+.dial.small{height:130px}
+.readout{display:flex;gap:16px;flex-wrap:wrap;font-family:var(--mono);font-size:10px;color:#7d7d8c;margin-top:8px}
+.readout b{color:var(--gold);font-weight:400}
+.knobs{display:flex;gap:12px;flex-wrap:wrap;justify-content:flex-start;padding:4px 0}
+.ctrl{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:54px}
+.ctrl .lbl{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:#7d7d8c}
+.ctrl .val{font-family:var(--mono);font-size:10px;color:var(--gold);min-height:12px}
+.knob{width:50px;height:50px;border-radius:50%;background:radial-gradient(circle at 35% 28%,#4c4c58,#14141a 72%);border:1px solid #4c4c5a;position:relative;cursor:ns-resize;touch-action:none;outline:none;box-shadow:0 4px 12px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.14)}
+.knob:focus-visible,.knob:hover{border-color:#6a6a7c;box-shadow:0 0 0 3px rgba(255,179,71,.16),0 4px 12px rgba(0,0,0,.7)}
+.knob:before{content:"";position:absolute;inset:-6px;border-radius:50%;background:repeating-conic-gradient(from 225deg,#33333d 0 4deg,transparent 4deg 12deg);-webkit-mask:radial-gradient(circle,transparent 0 63%,#000 63%);mask:radial-gradient(circle,transparent 0 63%,#000 63%);opacity:.8;pointer-events:none}
+.knob:after{content:"";position:absolute;left:50%;top:8px;width:3px;height:13px;margin-left:-1.5px;border-radius:2px;background:linear-gradient(#ffd89b,#ff5a3b);transform-origin:50% 19px;transform:rotate(var(--a,-135deg));box-shadow:0 0 6px rgba(255,179,71,.55);pointer-events:none}
+select,input[type=text]{background:#0c0c11;border:1px solid var(--line);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:11px;padding:7px 9px}
+input[type=range]{width:100%;accent-color:var(--gold)}
+.tbl{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:10px}
+.tbl td{padding:3px 5px;border-bottom:1px solid #1b1b22;color:var(--muted);vertical-align:top}
+.tbl td:first-child{color:var(--text);white-space:nowrap}
+.note{font-family:var(--mono);font-size:9.5px;line-height:1.7;color:#6f6b64;margin-top:8px}
+.note b{color:var(--gold);font-weight:400}
+footer{padding:16px 0 30px;color:#5f5b55;font-family:var(--mono);font-size:10px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+@media(max-width:980px){.grid{grid-template-columns:1fr}}
+</style></head>
+<body>
+<header><div class="wrap">
+  <div class="bar">
+    <div class="brand">SONORA <b>·</b> LAB<span>application laboratory · somatic · frequency · evidence</span></div>
+    <button id="power">Power</button>
+    <button id="stopAll">■ Stop</button>
+    <a class="btn" href="sonora.html">← Instrument</a>
+    <a class="btn" href="index.html">← Desk</a>
+    <div class="status" id="status">Initialisation…</div>
+  </div>
+</div></header>
+
+<main class="wrap">
+  <div class="grid">
+    <!-- ── the ledger ───────────────────────────────────────────── -->
+    <section class="panel">
+      <h2>The Ledger <i id="ledgerCount">—</i></h2>
+      <div id="ledger"></div>
+      <div class="note">
+        Every protocol carries a grade. <b>A</b> = mechanism established and replicated ·
+        <b>B</b> = the mechanism is real, the effect is small or inconsistent ·
+        <b>C</b> = tradition or ritual, no mechanism found · <b>D</b> = the claim is not supported.
+        The ledger states what each protocol <b>does not claim</b>.
+      </div>
+    </section>
+
+    <!-- ── the instruments ──────────────────────────────────────── -->
+    <div class="lab-col">
+      <section class="panel">
+        <h2>Resonance <i>baroreflex · 0.1 Hz</i></h2>
+        <canvas class="dial" id="pacer" width="760" height="420"></canvas>
+        <div class="readout">
+          <span>rate <b id="pacerRate">6.0</b> bpm</span>
+          <span>phase <b id="pacerPhase">—</b></span>
+          <span>session <b id="pacerTime">00:00</b></span>
+          <span>dose <b id="pacerDose">0</b> min</span>
+          <span>level <b id="pacerDb">-∞ dB</b></span>
+        </div>
+        <div class="knobs" id="kPacer"></div>
+        <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+          <button id="pacerRun">▶ Start</button>
+          <button id="pacerCal">◎ Calibrate resonance</button>
+          <button id="pacerBell" class="on">Cue bell</button>
+        </div>
+        <div class="note">
+          Breathing at the resonance of the baroreflex raises RSA amplitude four- to tenfold and
+          increases baroreflex sensitivity (Lehrer &amp; Gevirtz 2014). Four weeks of training
+          reduced stress, anxiety and depressive symptoms against a control; an individual
+          resonance and a fixed 0.1&nbsp;Hz performed equally (n=88, 2026). Dose: ≥5&nbsp;min a day.
+          <b>Not a treatment for any condition.</b>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Entrainment <i>binaural · parameter matters</i></h2>
+        <canvas class="dial small" id="beats" width="760" height="260"></canvas>
+        <div class="readout">
+          <span>carrier <b id="bbCarrier">340</b> Hz</span>
+          <span>beat <b id="bbBeat">10</b> Hz</span>
+          <span>band <b id="bbBand">theta</b></span>
+          <span>elapsed <b id="bbTime">00:00</b></span>
+          <span>level <b id="bbDb">-∞ dB</b></span>
+        </div>
+        <div class="knobs" id="kBeats"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+          <button id="bbRun">▶ Start</button>
+          <button id="bbStop">■ Stop</button>
+        </div>
+        <div class="note">
+          The <b>mechanism</b> is real: EEG power at the beat frequency increases during
+          stimulation, and a low carrier (340&nbsp;Hz) with unmasked beats gives the strongest
+          entrainment (n=80, 2025). The <b>behavioural</b> effect is small and inconsistent:
+          g=0.45 across 22 studies, 5 of 14 EEG studies support entrainment and 8 do not, and the
+          pain evidence is low to very low certainty. <b>Longer exposure, and exposure before the
+          task, work better than exposure during it.</b> Not a treatment.
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Somatic <i>interoceptive attention</i></h2>
+        <canvas class="dial small" id="scan" width="760" height="260"></canvas>
+        <div class="readout">
+          <span>region <b id="scanRegion">—</b></span>
+          <span>elapsed <b id="scanTime">00:00</b></span>
+          <span>level <b id="scanDb">-∞ dB</b></span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+          <button id="scanRun">▶ Start</button>
+          <button id="scanStop">■ Stop</button>
+          <button id="scanCarriers" class="on">Solfege carriers</button>
+        </div>
+        <div class="note">
+          Attending to internal sensation raises interoceptive accuracy: 20 of 31 randomised trials
+          (64.5%) show interoception-based interventions beating a non-interoceptive control,
+          strongest in PTSD, IBS, fibromyalgia and substance use — while symptom change stays
+          inconclusive (2023). <b>This is an attention practice, not trauma therapy.</b> The solfege
+          tones are carriers for the practice; they are not the mechanism.
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Dose &amp; Safety <i>the budget that matters</i></h2>
+        <table class="tbl" id="doseTable"></table>
+        <div class="note">
+          No decibel measurement has ever been published for a sound bath. This laboratory measures
+          and shows its own output. ≤70&nbsp;dBA is unlikely to cause hearing loss even over long
+          exposure; ≥85&nbsp;dBA with long or repeated exposure can (NIDCD). WHO (2026) weekly
+          limits: 80&nbsp;dB for 40&nbsp;h, 90&nbsp;dB for 4&nbsp;h, 100&nbsp;dB for 20&nbsp;min.
+          <b>Do not use this with epilepsy, tinnitus, hyperacusis, or in pregnancy without medical
+          advice. It is not a substitute for care.</b>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <section class="panel">
+    <h2>Session Ledger <i>n-of-1 data for the doctoral project</i></h2>
+    <table class="tbl" id="sessionTable"></table>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <button id="logSession">＋ Log a session</button>
+      <button id="exportSessions">⇩ Export JSON</button>
+      <button id="clearSessions">Clear</button>
+      <span class="status" id="sessionStatus" style="text-align:left">no sessions yet</span>
+    </div>
+    <div class="note">
+      The ledger is yours. Sessions are stored in this browser only and export as JSON — the
+      doctoral project needs honest n-of-1 data, and the only honest data is the data you
+      actually collected.
+    </div>
+  </section>
+</main>
+
+<footer class="wrap"><span>SONORA LAB · AN EVIDENCE-GRADED APPLICATION LABORATORY</span><span id="foot">not medical advice</span></footer>
+
+<script>
+'use strict';
+const $=(s,r=document)=>r.querySelector(s);
+const $$=(s,r=document)=>Array.from(r.querySelectorAll(s));
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const mmss=s=>String(Math.floor(s/60)).padStart(2,'0')+':'+String(Math.floor(s%60)).padStart(2,'0');
+function setStatus(m,k){const s=$('#status');s.textContent=m;s.className='status'+(k?' '+k:'');}
+
+/* ── the evidence ledger ─────────────────────────────────────────────
+   Grade: A mechanism established · B mechanism real, effect small or
+   mixed · C tradition or ritual · D not supported. */
+const PROTOCOLS=[
+ {id:'breath',grade:'A',name:'Paced breathing at the resonance',claim:'Slow breathing near the baroreflex resonance raises heart-rate-variability amplitude and baroreflex sensitivity.',
+  effect:'RSA amplitude ×4–10 over rest; baroreflex gain up. Four weeks of training cut stress, anxiety and depressive symptoms vs control (n=88, 2026); individual resonance ≈ fixed 0.1 Hz.',
+  dose:'5 min/day minimum; 10–20 min for a session. Rate 4.5–7 breaths/min.',
+  ref:'Lehrer & Gevirtz, Front Neurosci 2014 · Berntson et al. 1997 · 2026 RCT (n=88)',
+  not:'Does not treat a diagnosed condition. Resting HRV does not necessarily change.'},
+ {id:'music60',grade:'A',name:'Music at 60–90 BPM',claim:'Music interventions of a calm character reduce stress and anxiety.',
+  effect:'Medium-to-large effects on stress outcomes across 47 studies and ~2 700 participants; the larger effects are for slower music (≈60–90 BPM).',
+  dose:'Any length; the tempo and the character carry the effect.',
+  ref:'de Witte et al., meta-analysis (47 studies, ≈2 700 participants)',
+  not:'The pitch number does not matter — tempo, character and preference do.'},
+ {id:'entrain',grade:'B',name:'Auditory entrainment (ASSR / binaural beats)',claim:'A periodic auditory stimulus increases the neural oscillation at its own frequency.',
+  effect:'Mechanism confirmed: noise-corrected EEG power rises at the beat frequency. Behavioural effects are small and mixed (g=0.45, 22 studies; 5 of 14 EEG studies support, 8 do not).',
+  dose:'≥10 min; expose BEFORE the task; a low carrier (340 Hz) and no masking noise give the strongest entrainment.',
+  ref:'Ingendoh et al. 2018 (meta-analysis) · PLOS ONE 2023 (systematic review) · Sci Rep 2025 (n=80)',
+  not:'Not an established analgesic; the pain evidence is low to very low certainty.'},
+ {id:'bowl',grade:'B',name:'Singing bowl / singing tone',claim:'A sustained struck tone with rich overtones produces relaxation.',
+  effect:'Anxiety reduced (SMD −1.73) across 19 clinical studies, 9 of them RCTs. Heterogeneity is high (I²=86 %) and every RCT carries a high risk of bias; blinding is essentially impossible.',
+  dose:'20–45 min; 40 Hz appears most often in the VAT literature.',
+  ref:'Systematic review of singing bowl clinical studies, 2025',
+  not:'Blinding is impossible, so expectancy cannot be separated from the effect.'},
+ {id:'vat',grade:'B',name:'Vibroacoustic therapy',claim:'Low-frequency vibration delivered to the body lowers stress.',
+  effect:'Increased parasympathetic activity and reduced arousal after sessions. For pain, observational studies are positive but the randomised trials largely are not — a sham cannot hide the vibration.',
+  dose:'40 Hz, 20–45 min, daily for acute pain, daily-to-weekly for chronic.',
+  ref:'VAT scoping review (20 studies, 2022) · VSM stress study 2024',
+  not:'Not established for pain; the mechanism may be the expectation as much as the vibration.'},
+ {id:'intero',grade:'B',name:'Interoceptive attention practice',claim:'Attending to internal sensation improves the accuracy of interoception.',
+  effect:'20 of 31 randomised trials (64.5%) beat a non-interoceptive control on interoception, strongest in PTSD, IBS, fibromyalgia and substance use; symptom change was inconclusive.',
+  dose:'10–20 min, daily.',
+  ref:'Systematic review of interoception-based interventions (31 RCTs, 2023)',
+  not:'Improves interoception more reliably than it improves symptoms. Not trauma therapy.'},
+ {id:'solfeggio',grade:'C',name:'Solfeggio frequencies (174–963 Hz)',claim:'Each frequency carries a specific healing property — 528 Hz for DNA repair, 285 Hz for tissue repair.',
+  effect:'The set was produced in 1999 by digit-sum reduction of Bible verses — a numerological, not physical, derivation. The DNA-repair claim traces to a single unreplicated 1998 study; DNA mechanical resonances are ~10⁹ Hz, six orders of magnitude away. The one human study (n=9, 5 min) shows a small cortisol/oxytocin shift, and its own authors write that the solfege claims have no scientific basis.',
+  dose:'Use as a carrier for a slow, low, calm sound — which does help.',
+  ref:'Puleo & Horowitz 1999 · Akimoto et al. 2018 · resonance-claims systematic evaluation',
+  not:'No frequency-specific biological effect has ever been demonstrated. 528 Hz does not repair DNA.'},
+ {id:'schumann',grade:'C',name:'Schumann resonance coupling',claim:'The 7.83 Hz field of the Earth–ionosphere cavity entrains the brain.',
+  effect:'The natural field is ~1 picoTesla — six to eight orders of magnitude below neural sensitivity. The frequency overlap with EEG bands is arithmetically real; the coupling is not.',
+  dose:'—',
+  ref:'Resonance-claims evaluation (Schumann section)',
+  not:'Plausible as a question, implausible as a mechanism at natural amplitudes.'},
+ {id:'se',grade:'D',name:'Somatic Experiencing as clinical treatment',claim:'Body-based trauma therapy resolves trauma more durably than talking therapies.',
+  effect:'Five studies with sufficient rigour, two of them without adequate controls; quality mixed. No evidence of superiority over CBT or EMDR.',
+  dose:'—',
+  ref:'SE scoping review 2021 · evidence review of body-based trauma claims, 2025',
+  not:'Not a substitute for evidence-based trauma care. Polyvagal theory remains unproven.'},
+ {id:'epigen',grade:'D',name:'Sound changes DNA expression',claim:'Listening to specific frequencies switches genes on.',
+  effect:'No controlled human evidence. The mechanism proposed is physically incoherent at audible frequencies.',
+  dose:'—',
+  ref:'Rein & McCraty 1998 (unreplicated) · Abdolahad et al. 2024',
+  not:'Not supported. Listed here so the claim can be recognised and answered.'}
+];
+
+/* ── audio engine ─────────────────────────────────────────────────── */
+let ctx=null,N={},master=null;
+const state={
+  pacer:{on:false,rate:6,t:0,phase:0,elapsed:0,bell:true},
+  beats:{on:false,carrier:340,beat:10,level:-24,elapsed:0},
+  scan:{on:false,elapsed:0,idx:0,carriers:true},
+  level:-120
+};
+const SCAN_REGIONS=[
+ ['Feet',12],['Legs',10],['Pelvis',10],['Belly',12],['Chest',14],['Hands',10],['Arms',10],
+ ['Shoulders',10],['Throat',8],['Jaw',8],['Eyes',10],['Crown',14]
+];
+const SOLF=[174,285,396,417,528,639,741,852,963];
+
+function initAudio(){
+  if(ctx)return ctx;
+  const AC=window.AudioContext||window.webkitAudioContext;
+  ctx=new AC({latencyHint:'interactive'});
+  master=ctx.createGain();master.gain.value=1;
+  N.analyser=ctx.createAnalyser();N.analyser.fftSize=2048;N.analyser.smoothingTimeConstant=.7;
+  N.limiter=ctx.createDynamicsCompressor();
+  N.limiter.threshold.value=-6;N.limiter.knee.value=6;N.limiter.ratio.value=12;N.limiter.attack.value=.004;N.limiter.release.value=.2;
+  master.connect(N.limiter);N.limiter.connect(N.analyser);N.analyser.connect(ctx.destination);
+  return ctx;
+}
+async function resume(){if(ctx&&ctx.state==='suspended'){try{await ctx.resume();}catch(e){}}}
+
+/* the paced-breathing guide: an organ-ish tone on the phase changes */
+const pacerOsc={};
+function buildPacer(){
+  if(pacerOsc.g)return;
+  pacerOsc.g=ctx.createGain();pacerOsc.g.gain.value=0;
+  const filt=ctx.createBiquadFilter();filt.type='lowpass';filt.frequency.value=900;filt.Q.value=.7;
+  const o1=ctx.createOscillator();o1.type='sine';o1.frequency.value=174;
+  const o2=ctx.createOscillator();o2.type='sine';o2.frequency.value=174*2.01;
+  const g2=ctx.createGain();g2.gain.value=.35;
+  o1.connect(filt);o2.connect(g2);g2.connect(filt);
+  filt.connect(pacerOsc.g);pacerOsc.g.connect(master);
+  o1.start();o2.start();
+  pacerOsc.o1=o1;pacerOsc.o2=o2;pacerOsc.filt=filt;
+}
+/* the binaural generator: two carriers, hard left and right */
+const bb={};
+function buildBeats(){
+  if(bb.g)return;
+  bb.g=ctx.createGain();bb.g.gain.value=0;
+  bb.l=ctx.createGain();bb.r=ctx.createGain();
+  bb.l.gain.value=1;bb.r.gain.value=1;
+  if(ctx.createStereoPanner){
+    bb.pl=ctx.createStereoPanner();bb.pl.pan.value=-1;
+    bb.pr=ctx.createStereoPanner();bb.pr.pan.value=1;
+    bb.l.connect(bb.pl);bb.pl.connect(bb.g);
+    bb.r.connect(bb.pr);bb.pr.connect(bb.g);
+  }else{bb.l.connect(bb.g);bb.r.connect(bb.g);}
+  bb.g.connect(master);
+  bb.ol=ctx.createOscillator();bb.ol.type='sine';
+  bb.or=ctx.createOscillator();bb.or.type='sine';
+  bb.ol.connect(bb.l);bb.or.connect(bb.r);
+  bb.ol.start();bb.or.start();
+}
+/* the somatic bed: a slow chord of solfege carriers, very quiet */
+const bed={};
+function buildBed(){
+  if(bed.g)return;
+  bed.g=ctx.createGain();bed.g.gain.value=0;
+  const filt=ctx.createBiquadFilter();filt.type='lowpass';filt.frequency.value=1400;
+  bed.oscs=[];
+  SOLF.forEach((f,i)=>{
+    const o=ctx.createOscillator();o.type=i%2?'sine':'triangle';o.frequency.value=f;
+    const g=ctx.createGain();g.gain.value=0.10/(i+1);
+    o.connect(g);g.connect(filt);o.start();
+    bed.oscs.push({o,g});
+  });
+  filt.connect(bed.g);bed.g.connect(master);
+}
+
+/* ── the knobs ─────────────────────────────────────────────────────── */
+const knobs={};
+function knob(host,cfg){
+  const c=document.createElement('div');c.className='ctrl';
+  const k=document.createElement('div');k.className='knob';k.tabIndex=0;k.setAttribute('role','slider');k.setAttribute('aria-label',cfg.label);
+  const l=document.createElement('div');l.className='lbl';l.textContent=cfg.label;
+  const v=document.createElement('div');v.className='val';
+  c.append(k,l,v);host.appendChild(c);
+  const obj={v:cfg.value,min:cfg.min,max:cfg.max,out:v,el:k,fmt:cfg.fmt,set:null,on:cfg.on};
+  obj.set=(val,silent)=>{obj.v=clamp(val,cfg.min,cfg.max);k.style.setProperty('--a',(-135+270*(obj.v-cfg.min)/(cfg.max-cfg.min))+'deg');v.textContent=cfg.fmt?cfg.fmt(obj.v):obj.v.toFixed(2);if(!silent&&cfg.on)cfg.on(obj.v);};
+  let drag=false,y0=0,v0=0;
+  k.addEventListener('pointerdown',e=>{drag=true;y0=e.clientY;v0=obj.v;k.setPointerCapture(e.pointerId);e.preventDefault();});
+  k.addEventListener('pointermove',e=>{if(drag)obj.set(v0+(y0-e.clientY)/180);});
+  const end=()=>{drag=false;};k.addEventListener('pointerup',end);k.addEventListener('pointercancel',end);
+  k.addEventListener('wheel',e=>{e.preventDefault();obj.set(obj.v-Math.sign(e.deltaY)*(cfg.step||1));},{passive:false});
+  k.addEventListener('keydown',e=>{const s=e.shiftKey?.2:1;if(e.key==='ArrowUp'){obj.set(obj.v+s);e.preventDefault();}if(e.key==='ArrowDown'){obj.set(obj.v-s);e.preventDefault();}});
+  obj.set(cfg.value,true);
+  return obj;
+}
+const dbOf=v=>v<=0?'-∞':v.toFixed(0);
+
+function buildKnobs(){
+  knobs.pRate=knob($('#kPacer'),{label:'RATE bpm',min:4,max:8,value:6,step:.1,fmt:v=>v.toFixed(1),on:v=>{state.pacer.rate=v;}});
+  knobs.pVol=knob($('#kPacer'),{label:'VOLUME',min:-48,max:-6,value:-30,step:1,fmt:v=>dbOf(v)+' dB',on:v=>applyPacer()})
+  knobs.bCarrier=knob($('#kBeats'),{label:'CARRIER',min:100,max:600,value:340,step:10,fmt:v=>v.toFixed(0)+' Hz',on:v=>{state.beats.carrier=v;applyBeats();}});
+  knobs.bBeat=knob($('#kBeats'),{label:'BEAT',min:1,max:50,value:10,step:1,fmt:v=>v.toFixed(0)+' Hz',on:v=>{state.beats.beat=v;applyBeats();}});
+  knobs.bVol=knob($('#kBeats'),{label:'VOLUME',min:-48,max:-6,value:-24,step:1,fmt:v=>dbOf(v)+' dB',on:v=>applyBeats()})
+}
+
+/* ── the three instruments ────────────────────────────────────────── */
+function applyPacer(){
+  if(!pacerOsc.g)return;
+  const t=ctx.currentTime;
+  const g=state.pacer.on?Math.pow(10,knobs.pVol.v/20)*0.12:0;
+  pacerOsc.g.gain.setTargetAtTime(g,t,.08);
+}
+function applyBeats(){
+  if(!bb.g)return;
+  const t=ctx.currentTime;
+  bb.ol.frequency.setTargetAtTime(knobs.bCarrier.v,t,.05);
+  bb.or.frequency.setTargetAtTime(knobs.bCarrier.v+knobs.bBeat.v,t,.05);
+  const g=state.beats.on?Math.pow(10,knobs.bVol.v/20)*0.25:0;
+  bb.g.gain.setTargetAtTime(g,t,.12);
+}
+function applyBed(){
+  if(!bed.g)return;
+  const t=ctx.currentTime;
+  bed.g.gain.setTargetAtTime(state.scan.on?0.16:0,t,.6);
+}
+
+function startPacer(){
+  initAudio();resume();buildPacer();buildBed();
+  state.pacer.on=true;state.pacer.t=0;state.pacer.phase=0;state.pacer.elapsed=0;
+  applyPacer();applyBed();
+  $('#pacerRun').textContent='❚❚ Pause';$('#pacerRun').classList.add('active');
+  setStatus('Resonance : la machine respire avec vous','ok');
+}
+function stopPacer(){
+  state.pacer.on=false;applyPacer();applyBed();
+  $('#pacerRun').textContent='▶ Start';$('#pacerRun').classList.remove('active');
+}
+function startBeats(){
+  initAudio();resume();buildBeats();
+  state.beats.on=true;state.beats.elapsed=0;
+  applyBeats();
+  $('#bbRun').classList.add('active');
+  setStatus('Entraînement auditif en cours','ok');
+}
+function stopBeats(){
+  state.beats.on=false;applyBeats();
+  $('#bbRun').classList.remove('active');
+}
+function startScan(){
+  initAudio();resume();buildBed();
+  state.scan.on=true;state.scan.elapsed=0;state.scan.idx=0;
+  applyBed();
+  $('#scanRun').classList.add('active');
+  setStatus('Attention somatique : commencez','ok');
+}
+function stopScan(){
+  state.scan.on=false;applyBed();
+  $('#scanRun').classList.remove('active');
+}
+
+/* ── the drawings ─────────────────────────────────────────────────── */
+function drawPacer(){
+  const cv=$('#pacer');if(!cv)return;
+  const g=cv.getContext('2d'),w=cv.width,h=cv.height,cx=w/2,cy=h/2;
+  g.clearRect(0,0,w,h);
+  const rate=knobs.pRate.v;
+  const period=60/rate;
+  const t=state.pacer.t%period;
+  const inhale=t<period/2;
+  const phase=inhale?t/(period/2):1-(t-period/2)/(period/2);
+  const r=40+phase*130;
+  const grd=g.createRadialGradient(cx,cy,r*0.2,cx,cy,r);
+  grd.addColorStop(0,'rgba(255,179,71,'+(state.pacer.on?0.5:0.18)+')');
+  grd.addColorStop(1,'rgba(255,179,71,0)');
+  g.beginPath();g.arc(cx,cy,r,0,Math.PI*2);g.fillStyle=grd;g.fill();
+  g.beginPath();g.arc(cx,cy,r,0,Math.PI*2);
+  g.strokeStyle='rgba(255,179,71,'+(state.pacer.on?0.8:0.35)+')';g.lineWidth=2;g.stroke();
+  g.beginPath();g.arc(cx,cy,40,0,Math.PI*2);g.strokeStyle='rgba(255,255,255,.12)';g.lineWidth=1;g.stroke();
+  g.fillStyle='rgba(234,230,223,.85)';g.font='22px ui-monospace,monospace';g.textAlign='center';
+  g.fillText(inhale?'INHALE':'EXHALE',cx,cy+8);
+  g.fillStyle='rgba(255,179,71,.7)';g.font='13px ui-monospace,monospace';
+  g.fillText(rate.toFixed(1)+' breaths/min  ·  '+(rate/60).toFixed(3)+' Hz',cx,cy+34);
+  $('#pacerPhase').textContent=inhale?'in':'out';
+}
+function drawBeats(){
+  const cv=$('#beats');if(!cv)return;
+  const g=cv.getContext('2d'),w=cv.width,h=cv.height;
+  g.clearRect(0,0,w,h);
+  const carrier=knobs.bCarrier.v,beat=knobs.bBeat.v;
+  const mid=h/2;
+  g.strokeStyle='rgba(255,255,255,.06)';g.beginPath();g.moveTo(0,mid);g.lineTo(w,mid);g.stroke();
+  for(let ch=0;ch<2;ch++){
+    g.beginPath();
+    const scale=(h*0.32)/(carrier/10);
+    for(let x=0;x<=w;x+=2){
+      const tt=x/w*4;
+      const y=mid+Math.sin(2*Math.PI*(carrier/40)*tt)*(ch?1:-1)*scale;
+      x?g.lineTo(x,y):g.moveTo(x,y);
+    }
+    g.strokeStyle=ch?'rgba(78,201,224,.55)':'rgba(255,179,71,.55)';g.lineWidth=1.2;g.stroke();
+  }
+  /* the beat: the envelope the brain perceives */
+  g.beginPath();
+  for(let x=0;x<=w;x+=2){
+    const tt=x/w*3;
+    const y=mid+Math.sin(2*Math.PI*beat*tt)*(h*0.16);
+    x?g.lineTo(x,y):g.moveTo(x,y);
+  }
+  g.strokeStyle='rgba(160,124,255,.75)';g.lineWidth=1.6;g.stroke();
+  g.fillStyle='rgba(139,135,126,.9)';g.font='12px ui-monospace,monospace';g.textAlign='left';
+  g.fillText('left '+carrier.toFixed(0)+' Hz   right '+(carrier+beat).toFixed(0)+' Hz   →  beat '+beat.toFixed(0)+' Hz ('+bandOf(beat)+')',10,18);
+}
+function bandOf(b){return b<4?'delta':b<8?'theta':b<13?'alpha':b<30?'beta':'gamma';}
+function drawScan(){
+  const cv=$('#scan');if(!cv)return;
+  const g=cv.getContext('2d'),w=cv.width,h=cv.height;
+  g.clearRect(0,0,w,h);
+  const n=SCAN_REGIONS.length;
+  const per=state.scan.on?12:8;
+  const idx=Math.floor(state.scan.elapsed/per)%n;
+  $('#scanRegion').textContent=SCAN_REGIONS[idx][0];
+  for(let i=0;i<n;i++){
+    const x=14+i*((w-28)/n);
+    const bw=(w-28)/n-6;
+    const active=i===idx&&state.scan.on;
+    const hh=20+(SCAN_REGIONS[i][1]/14)*90;
+    g.fillStyle=active?'rgba(255,179,71,.55)':'rgba(78,201,224,'+(0.10+SCAN_REGIONS[i][1]/40)+')';
+    g.fillRect(x,h-30-hh,bw,hh);
+    g.fillStyle=active?'rgba(255,220,160,.95)':'rgba(139,135,126,.65)';
+    g.font='10px ui-monospace,monospace';g.textAlign='center';
+    g.fillText(SCAN_REGIONS[i][0],x+bw/2,h-14);
+  }
+}
+
+/* ── the ledger rendering ─────────────────────────────────────────── */
+function renderLedger(){
+  const host=$('#ledger');
+  host.innerHTML='';
+  PROTOCOLS.forEach(p=>{
+    const el=document.createElement('div');
+    el.className='card';
+    el.innerHTML='<div class="card-head"><span class="grade g-'+p.grade+'">'+p.grade+'</span><b>'+p.name+'</b></div>'+
+      '<p>'+p.claim+'</p>'+
+      '<div class="meta"><b>evidence</b> '+p.effect+'<br><b>dose</b> '+p.dose+'<br><b>source</b> '+p.ref+'</div>'+
+      '<div class="not">does not claim: '+p.not+'</div>';
+    el.onclick=()=>{
+      $$('.card').forEach(c=>c.classList.remove('on'));
+      el.classList.add('on');
+      if(p.id==='breath')startPacer();
+      if(p.id==='entrain')startBeats();
+      if(p.id==='intero')startScan();
+      if(p.id==='solfeggio'){state.scan.carriers=true;$('#scanCarriers').classList.add('on');}
+      setStatus(p.name+' · grade '+p.grade,p.grade==='D'?'err':'ok');
+    };
+    host.appendChild(el);
+  });
+  $('#ledgerCount').textContent=PROTOCOLS.length+' protocols · graded';
+}
+
+/* The authoritative ledger lives with the doctoral service; the copy above is
+   the offline fallback so the laboratory still works on its own. */
+async function syncEvidence(){
+  try{
+    const r=await fetch('/api/healer/api/evidence');
+    if(!r.ok)return;
+    const j=await r.json();
+    if(j.protocols&&j.protocols.length){
+      PROTOCOLS.length=0;
+      j.protocols.forEach(p=>PROTOCOLS.push({
+        id:p.id,grade:p.grade,name:p.name,claim:p.claim,effect:p.evidence,
+        dose:p.dose,ref:p.source,not:p.not_claimed
+      }));
+      renderLedger();
+      if(j.safety&&j.safety.who_limits){
+        $('#doseTable').insertAdjacentHTML('afterbegin','<tr><td>'+j.safety.who+'</td><td>'+j.safety.who_limits+'</td></tr>');
+        $('#doseTable').insertAdjacentHTML('afterbegin','<tr><td>safety</td><td>'+(j.safety.contraindications||[]).join(' · ')+'</td></tr>');
+      }
+      setStatus('Ledger synchronisé avec le service doctoral — '+PROTOCOLS.length+' protocoles','ok');
+    }
+  }catch(e){/* the offline ledger stands */}
+}
+
+/* ── the dose table ───────────────────────────────────────────────── */
+function renderDose(){
+  const rows=[
+    ['WHO (2026) weekly','80 dB → 40 h · 90 dB → 4 h · 100 dB → 20 min'],
+    ['NIOSH exposure','85 dBA over 8 h; halve the time for every +3 dB'],
+    ['NIDCD','≤70 dBA unlikely to harm even over long exposure; ≥85 dBA can'],
+    ['this laboratory','output is capped and shown live; the session ledger records it']
+  ];
+  $('#doseTable').innerHTML=rows.map(r=>'<tr><td>'+r[0]+'</td><td>'+r[1]+'</td></tr>').join('');
+}
+
+/* ── the session ledger (n-of-1) ──────────────────────────────────── */
+const LS='sonora.lab.sessions.v1';
+const sessions=[];
+function loadSessions(){try{const j=JSON.parse(localStorage.getItem(LS)||'[]');sessions.length=0;sessions.push(...j);}catch(e){}}
+function saveSessions(){try{localStorage.setItem(LS,JSON.stringify(sessions));}catch(e){}}
+function renderSessions(){
+  $('#sessionTable').innerHTML=sessions.length?sessions.map(s=>
+    '<tr><td>'+s.at+'</td><td>'+s.protocol+'</td><td>'+s.minutes+' min</td><td>'+(s.effect||'—')+'</td><td>'+(s.note||'')+'</td></tr>'
+  ).join(''):'<tr><td colspan="5">no sessions yet</td></tr>';
+  $('#sessionStatus').textContent=sessions.length+' session'+(sessions.length===1?'':'s')+' recorded';
+}
+$('#logSession').onclick=()=>{
+  const which=state.pacer.on?'respiration':state.beats.on?'entrainment':state.scan.on?'somatic':'—';
+  const mins=Math.round((state.pacer.elapsed+state.beats.elapsed+state.scan.elapsed)/60);
+  const effect=prompt('How did it land? (better / same / worse)','better');
+  if(effect===null)return;
+  sessions.push({at:new Date().toISOString().slice(0,16).replace('T',' '),protocol:which,minutes:mins,effect:effect,note:prompt('A note to yourself?','—')||''});
+  saveSessions();renderSessions();
+};
+$('#exportSessions').onclick=()=>{
+  const blob=new Blob([JSON.stringify({tool:'sonora-lab',version:1,exported:new Date().toISOString(),sessions},null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='sonora-lab-sessions-'+Date.now()+'.json';document.body.appendChild(a);a.click();a.remove();
+};
+$('#clearSessions').onclick=()=>{sessions.length=0;saveSessions();renderSessions();};
+
+/* ── the calibration: find the rate that feels easiest ───────────── */
+let calib=null;
+$('#pacerCal').onclick=()=>{
+  if(calib){calib=null;setStatus('Calibration annulée');return;}
+  const rates=[4.5,5,5.5,6,6.5,7];
+  calib={rates:rates.slice(),i:0,scores:[],t:0};
+  knobs.pRate.set(rates[0]);
+  setStatus('Calibration : rate '+rates[0]+' bpm pendant 60 s, puis notez la facilité');
+  $('#pacerCal').classList.add('active');
+};
+
+/* ── the loop ─────────────────────────────────────────────────────── */
+function levelNow(){
+  if(!ctx||!N.analyser)return -120;
+  const a=new Uint8Array(N.analyser.fftSize);
+  N.analyser.getByteTimeDomainData(a);
+  let sum=0;
+  for(let i=0;i<a.length;i++){const v=(a[i]-128)/128;sum+=v*v;}
+  const rms=Math.sqrt(sum/a.length);
+  state.level=20*Math.log10(Math.max(rms,1e-6));
+  return state.level;
+}
+function tick(){
+  requestAnimationFrame(tick);
+  const now=performance.now()/1000;
+  const dt=Math.min(0.05,now-(tick.last||now));tick.last=now;
+  if(state.pacer.on){
+    state.pacer.t+=dt;state.pacer.elapsed+=dt;
+    const period=60/knobs.pRate.v;
+    const before=Math.floor(state.pacer.t/period);
+    /* the bell on each phase change */
+    if(pacerOsc.g){
+      const phase=Math.floor(state.pacer.t/(period/2));
+      if(pacerOsc.phase!==undefined&&pacerOsc.phase!==phase&&state.pacer.bell){
+        const t=ctx.currentTime;
+        pacerOsc.g.gain.cancelScheduledValues(t);
+        pacerOsc.g.gain.setValueAtTime(pacerOsc.g.gain.value,t);
+        pacerOsc.g.gain.linearRampToValueAtTime(0,t+.02);
+        pacerOsc.g.gain.linearRampToValueAtTime(knobs.pVol.v>-40?0.035:0,t+.5);
+      }
+      pacerOsc.phase=phase;
+    }
+  }
+  if(state.beats.on)state.beats.elapsed+=dt;
+  if(state.scan.on){
+    state.scan.elapsed+=dt;
+    const idx=Math.floor(state.scan.elapsed/12)%SCAN_REGIONS.length;
+    if(idx!==state.scan.idx){
+      state.scan.idx=idx;
+      if(bed.g){
+        const f=state.scan.carriers?SOLF[idx%SOLF.length]:174;
+        bed.oscs.forEach(o=>o.o.frequency.setTargetAtTime(f,ctx.currentTime,1.2));
+      }
+    }
+  }
+  if(calib){
+    calib.t+=dt;
+    if(calib.t>=60){
+      const rate=calib.rates[calib.i];
+      const score=parseFloat(prompt('Facilité à '+rate+' bpm ? (0-10)','7')||'0');
+      calib.scores.push({rate:rate,score:score});
+      calib.i++;calib.t=0;
+      if(calib.i>=calib.rates.length){
+        const best=calib.scores.slice().sort((a,b)=>b.score-a.score)[0];
+        knobs.pRate.set(best.rate);
+        calib=null;$('#pacerCal').classList.remove('active');
+        setStatus('Résonance estimée : '+best.rate+' bpm (auto-évaluée, remplace une mesure ECG)','ok');
+      }else{knobs.pRate.set(calib.rates[calib.i]);setStatus('Calibration : '+calib.rates[calib.i]+' bpm');}
+    }
+  }
+  /* the readouts */
+  const db=levelNow();
+  $('#pacerDb').textContent=db<=-119?'-∞ dB':db.toFixed(0)+' dB';
+  $('#bbDb').textContent=db<=-119?'-∞ dB':db.toFixed(0)+' dB';
+  $('#scanDb').textContent=db<=-119?'-∞ dB':db.toFixed(0)+' dB';
+  $('#pacerTime').textContent=mmss(state.pacer.elapsed);
+  $('#pacerDose').textContent=Math.floor(state.pacer.elapsed/60);
+  $('#bbTime').textContent=mmss(state.beats.elapsed);
+  $('#scanTime').textContent=mmss(state.scan.elapsed);
+  $('#bbCarrier').textContent=knobs.bCarrier.v.toFixed(0);
+  $('#bbBeat').textContent=knobs.bBeat.v.toFixed(0);
+  $('#bbBand').textContent=bandOf(knobs.bBeat.v);
+  drawPacer();drawBeats();drawScan();
+}
+
+/* ── wiring ───────────────────────────────────────────────────────── */
+$('#power').onclick=async()=>{initAudio();await resume();$('#power').classList.add('active');setStatus('Moteur en ligne · '+ctx.sampleRate+' Hz','ok');};
+$('#stopAll').onclick=()=>{stopPacer();stopBeats();stopScan();setStatus('Tout est arrêté');};
+$('#pacerRun').onclick=()=>{state.pacer.on?stopPacer():startPacer();};
+$('#pacerBell').onclick=()=>{state.pacer.bell=!state.pacer.bell;$('#pacerBell').classList.toggle('on',state.pacer.bell);};
+$('#bbRun').onclick=()=>{state.beats.on?stopBeats():startBeats();};
+$('#bbStop').onclick=stopBeats;
+$('#scanRun').onclick=()=>{state.scan.on?stopScan():startScan();};
+$('#scanStop').onclick=stopScan;
+$('#scanCarriers').onclick=()=>{state.scan.carriers=!state.scan.carriers;$('#scanCarriers').classList.toggle('on',state.scan.carriers);};
+
+renderLedger();renderDose();loadSessions();renderSessions();buildKnobs();requestAnimationFrame(tick);
+syncEvidence();
+setStatus('Le laboratoire est prêt · cliquez Power pour ouvrir le son');
+</script>
+</body></html>

@@ -1,0 +1,15 @@
+# rust build output
+pub/rust/target/
+
+# node
+node_modules/
+
+# logs and scratch
+*.log
+*.tmp
+
+# editors / os
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

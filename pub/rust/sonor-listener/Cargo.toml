@@ -1,0 +1,19 @@
+[package]
+name = "sonor-listener"
+version = "0.1.0"
+edition = "2021"
+description = "Native Sonor listener: captures the PC's audio and streams analysis frames to the server"
+
+[[bin]]
+name = "sonor-listener"
+path = "src/main.rs"
+
+[dependencies]
+sonor-core = { path = "../sonor-core" }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Media_Audio",
+    "Win32_System_Com",
+    "Win32_Foundation",
+] }

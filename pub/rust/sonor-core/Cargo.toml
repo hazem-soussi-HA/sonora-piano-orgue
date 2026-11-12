@@ -1,0 +1,9 @@
+[package]
+name = "sonor-core"
+version = "0.1.0"
+edition = "2021"
+description = "Sonor machine core: additive piano/organ voice rendering + spectral analysis"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"

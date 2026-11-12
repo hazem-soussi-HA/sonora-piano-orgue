@@ -1,0 +1,5 @@
+# The gnu target is linked with the toolchain's own lld, so no external MinGW
+# is needed. `build.cmd` puts that directory on PATH before building.
+[target.x86_64-pc-windows-gnu]
+linker = "rust-lld.exe"
+rustflags = ["-C", "link-self-contained=yes"]

@@ -1,14 +1,30 @@
-# SONORA — Piano Orgue & Machine Sonor
+# SONORA — Piano Orgue, Live Studio & the Machine Sonor
 
 ![MIT](https://img.shields.io/badge/license-MIT-green) ![rust](https://img.shields.io/badge/core-Rust-orange) ![wasm](https://img.shields.io/badge/browser-WASM%20%2B%20Web%20Audio-blue)
 
 A piano/organ instrument that **listens to your PC** and adapts itself to what it hears —
-voice synthesis and analysis written in Rust, with hand-written x86-64 assembly in the hot loop.
+voice synthesis and analysis in Rust, hand-written x86-64 assembly in the hot loop — and a
+**live techno studio** that plays *with* the record instead of over it, steered by an
+**intelligent sound healer**.
 
 ![SONORA](docs/screenshot.png)
 
-> *The aether panel is live in the screenshot: the native listener is capturing the system
-> output through WASAPI loopback, detecting **F♯ major** at **165 BPM** with 88 % confidence.*
+> *Live in the screenshot: the native listener captures the system output through WASAPI
+> loopback and detects **F♯ major at 109 BPM**. The live studio below has already locked
+> its key and tempo onto it, and the doctor service answers **ONLINE**.*
+
+---
+
+## The three pieces, one room
+
+| project | role | where it lives |
+|---|---|---|
+| **sonora-piano-orgue** | the instrument, the Rust machine, the analyser | this repository (public, MIT) |
+| **hazoom-dj-techno** | the techno engine's musical DNA — arrangement, Am7 voicing, bass motif | MIT, © 2026 Hazem Soussi — reused in `dj-live.js` |
+| **nano-protocol** | the doctor / sound-healing knowledge base and the solfeggio database | **private** — the studio talks to it over localhost |
+
+The private repository stays private: the studio reaches it through a local proxy
+(`/api/healer/…`), so no clinical material is ever published here.
 
 ---
 
@@ -21,6 +37,8 @@ voice synthesis and analysis written in Rust, with hand-written x86-64 assembly 
 | **The blend** | one brass knob crossfades both engines inside a single note |
 | **The machine** | the same Rust core renders the voices in the browser (WASM) and analyses the audio server-side (native) |
 | **The ear** | WASAPI loopback of the default output device — it hears exactly what your speakers play. No driver, no samples, no cloud |
+| **The live studio** | a realtime techno engine that locks onto the record: key, tempo, brightness, energy |
+| **The healer** | an intention goes in, a direction comes out — and the direction is applied to the running engine |
 
 ---
 
@@ -30,20 +48,62 @@ voice synthesis and analysis written in Rust, with hand-written x86-64 assembly 
 node server.mjs
 ```
 
-* instrument — <http://localhost:8787/sonora.html>
+* instrument + studio — <http://localhost:8787/sonora.html>
 * desk — <http://localhost:8787/>
 
 No install, no build step: the prebuilt `sonor.wasm` and `sonor-listener.exe` are in the repo.
-Add `?listen` to the instrument URL to auto-connect to the server listener.
+Add `?listen` to the URL to auto-connect to the server listener.
 
 Play with the mouse (velocity from where you click the key), the QWERTY row
 (`A S D F G H J K L ;` / `W E T Y U O P`, `Z`/`X` shift the octave), or a MIDI keyboard.
 
 ---
 
-## Let it adapt
+## The live studio
 
-The **AETHER** panel listens and then rewrites the instrument to fit the music:
+`dj-live.js` is a realtime techno engine — kick, sub, hats, clap, stabs, risers, impacts,
+a resonant filter, a ping-pong delay, a reverb and a limiter, all synthesized, no samples.
+It inherits the arrangement form from `hazoom-dj-techno`:
+
+```
+intro(8) → build(8) → drop(16) → breakdown(8) → drop2(16) → outro(8)
+```
+
+What makes it *collaborative* is that it listens:
+
+| it obeys | how |
+|---|---|
+| **KEY** | the chord it plays is the key the record is in — the Am7 voicing transposed to the heard root, so the two never fight |
+| **TEMPO** | it rides the record's BPM, moving at most 8 % per tick so it never lurches |
+| **FILTER** | its cutoff follows the spectral centroid of what is playing |
+| **ENERGY** | the loudness of the record pushes the arrangement's gain and the sidechain depth |
+
+---
+
+## The healer
+
+Type an intention, press **ASK THE HEALER**, and the direction is applied to the running
+engine — the filter opens, the space widens, the weight changes.
+
+The server composes the answer from three things: your intention, the *live* musical state
+(the heard key and tempo, taken from the aether hub), and a healing anchor picked from the
+solfeggio database of the private doctor service.
+
+With no model configured, a deterministic local writer composes the direction — the feature
+always works. Point it at any OpenAI-compatible endpoint to use a real model:
+
+```cmd
+set HAZOOM_MODEL_URL=http://localhost:11434/v1/chat/completions
+set HAZOOM_MODEL_NAME=qwen2.5:14b
+set HAZOOM_MODEL_KEY=sk-…            REM optional
+set HAZOOM_HEALER_URL=http://127.0.0.1:8098
+```
+
+---
+
+## Let the instrument adapt
+
+The **AETHER** panel listens and rewrites the instrument to fit the music:
 
 | control | effect |
 |---|---|
@@ -72,9 +132,9 @@ capture ────┘
 | `sonor.wasm` | `wasm32-unknown-unknown` | the **voice machine** + the **analyser**, in the browser |
 | `sonor-listener.exe` | `x86_64-pc-windows-gnu` | the **listener**: WASAPI loopback of the PC's output device |
 
-The analyser is a hand-written radix-2 FFT, a per-semitone peak-picking chroma filterbank with
-an unsharp mask (so a partial's spectral skirt cannot pollute the neighbouring pitch class),
-Krumhansl-Schmuckler key detection, and onset-interval tempo tracking.
+The analyser is a hand-written radix-2 FFT, a per-semitone peak-picking chroma filterbank
+with an unsharp mask (so a partial's spectral skirt cannot pollute the neighbouring pitch
+class), Krumhansl-Schmuckler key detection, and onset-interval tempo tracking.
 
 **Assembly:** the tempo tracker's dot product is a hand-written x86-64 FMA routine
 (`vfmadd231ss` on `xmm0/xmm1/xmm2`), chosen at runtime when the CPU reports FMA, with a
@@ -96,19 +156,20 @@ See `pub/rust/README.md` for the architecture and the flat C ABI (no `wasm-bindg
 cd pub\rust && node test-core.js
 ```
 
-Renders voices and analyses synthetic audio, printing the measured spectra —
-organ 8′+4′ must show energy at 220 Hz **and** 440 Hz, the 1⅔′ drawbar alone at 1760 Hz
-and nothing below, the piano must decay, silence must measure exactly 0.
+Renders voices and analyses synthetic audio, printing the measured spectra — organ 8′+4′
+must show energy at 220 Hz **and** 440 Hz, the 1⅔′ drawbar alone at 1760 Hz and nothing
+below, the piano must decay, silence must measure exactly 0.
 
 ---
 
 ## Layout
 
 ```
-server.mjs              node server: static + /api + the aether websocket hub
+server.mjs              node server: static + /api + the aether websocket hub + the healer bridge
 pub/public/
   index.html            the SOLVE ET COAGULA live desk
-  sonora.html           SONORA · PIANO ORGUE — the instrument + the aether panel
+  sonora.html           SONORA · PIANO ORGUE — instrument, aether panel, live studio
+  dj-live.js            the realtime techno engine that plays with the record
   sonor-worker.js       drives the Rust/WASM core off the main thread
   sonor.wasm            the Rust machine (voice + analysis)
   sonor-listener.exe    native listener (WASAPI loopback) — prebuilt, rebuild with build.cmd
@@ -119,10 +180,12 @@ pub/rust/
 
 ---
 
-## Note
+## Credits & licence
+
+* Arrangement, voicing and motif from **hazoom-dj-techno** (MIT, © 2026 Hazem Soussi).
+* Doctor knowledge base and solfeggio database from **nano-protocol** (private).
+* Everything else here: MIT © 2026 Hazem Soussi.
 
 `server.mjs` is a **local** development server: it binds every interface and `/api/proxy`
 will fetch arbitrary URLs. Keep it on your own machine, or put it behind something that
 terminates TLS and restricts access before exposing it.
-
-MIT © 2026 Hazem Soussi

@@ -169,6 +169,85 @@ function startListener() {
   }
 }
 
+/* ------------------------------------------------------------------ *
+ *  THE HEALER — the private nano-protocol service plus the model.
+ *  The doctor content stays in its own private repository; the studio
+ *  talks to it over localhost and the model bridge turns the musical
+ *  state into an inspirational direction.
+ * ------------------------------------------------------------------ */
+const HEALER_URL = process.env.HAZOOM_HEALER_URL || 'http://127.0.0.1:8098';
+const MODEL_URL = process.env.HAZOOM_MODEL_URL || '';
+const MODEL_KEY = process.env.HAZOOM_MODEL_KEY || '';
+const MODEL_NAME = process.env.HAZOOM_MODEL_NAME || 'local-model';
+
+async function healerService(path) {
+  const r = await fetch(HEALER_URL + path, { headers: { 'Accept': 'application/json' } });
+  if (!r.ok) throw new Error('doctor service: HTTP ' + r.status);
+  return r.json();
+}
+
+/* A deterministic direction generator — used when no model is configured,
+   so the studio always has something to say. */
+function localDirection(ctx) {
+  const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  const key = names[ctx.root] + ' ' + (ctx.scale ? 'minor' : 'major');
+  const heard = ctx.heardBpm ? `the record runs at ${ctx.heardBpm.toFixed(0)} BPM` : 'no record is playing yet';
+  const anchors = [
+    [174, 'foundation', 'ground the low end'],
+    [285, 'tissue repair', 'let the pads breathe'],
+    [417, 'change', 'open the filter on the transition'],
+    [528, 'transformation', 'put the choir on the drop'],
+    [639, 'connection', 'widen the stereo field'],
+    [741, 'intuition', 'strip back and leave space'],
+    [852, 'spiritual order', 'hold the pattern, do not add']
+  ];
+  const anchor = anchors[Math.abs(Math.round(ctx.root * 3 + ctx.bpm / 40)) % anchors.length];
+  const mood = ctx.intention ? ctx.intention.trim() : 'open the sky';
+  const dir = [
+    `Hold the sub and let the silence do the work; ${heard}.`,
+    `Play the ${key} voicing under the record so the two never fight.`,
+    `Open the filter from ${(600 + ctx.bright * 9000) | 0} Hz across eight bars and let the riser arrive one bar before the drop.`,
+    `Sidechain deep on every kick, but keep the clap dry.`,
+    `Anchor the set on ${anchor[0]} Hz — ${anchor[1]}, ${anchor[2]}.`,
+    `The intention is: ${mood}. Answer it with dynamics, not with more layers.`
+  ];
+  return dir.join(' ');
+}
+
+async function modelDirection(ctx) {
+  const system = [
+    'You are the sound healer of a live techno studio.',
+    'You write short, vivid DJ directions that fuse the listener\'s intention',
+    'with the music the machine is hearing (its key, tempo and energy).',
+    'Speak in imperative sentences, never more than six, and always name one',
+    'concrete action: a filter move, a transition, a frequency to anchor on.',
+    'Never claim medical effects.'
+  ].join(' ');
+  const user = [
+    'Intentions: ' + (ctx.intention || '(none given)'),
+    'Intention category: ' + (ctx.category || 'unspecified'),
+    'The record the studio is hearing: ' + (ctx.heardBpm ? ctx.heardBpm.toFixed(1) + ' BPM, key ' + ctx.heardKey : 'silence'),
+    'The engine is playing: ' + ctx.key + ' at ' + ctx.bpm.toFixed(1) + ' BPM, section ' + ctx.section,
+    'Healing anchor available: ' + ctx.anchor,
+    'Write the direction.'
+  ].join('\n');
+
+  const body = {
+    model: MODEL_NAME,
+    messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+    temperature: 0.85,
+    max_tokens: 320
+  };
+  const headers = { 'Content-Type': 'application/json' };
+  if (MODEL_KEY) headers['Authorization'] = 'Bearer ' + MODEL_KEY;
+  const r = await fetch(MODEL_URL, { method: 'POST', headers, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error('model: HTTP ' + r.status + ' ' + (await r.text()).slice(0, 200));
+  const j = await r.json();
+  const text = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) ||
+    (j.response || j.text || '');
+  return String(text).trim();
+}
+
 /* ------------------------------------------------------------------ */
 const server = http.createServer(async (req, res) => {
   const u = url.parse(req.url, true);
@@ -210,6 +289,71 @@ const server = http.createServer(async (req, res) => {
   if (u.pathname === '/api/listen') {
     return send(res, 200, JSON.stringify({ listener: listenerState, clients: clients.size, frame: lastFrame }),
       { 'Content-Type':'application/json', 'Cache-Control':'no-store' });
+  }
+
+  /* the doctor service (private nano-protocol) behind a local proxy
+     (the /prompt route below is handled first) */
+  if (u.pathname.startsWith('/api/healer/') && u.pathname !== '/api/healer/prompt') {
+    const rest = u.pathname.slice('/api/healer'.length) || '/';
+    try {
+      const data = await healerService(rest);
+      return send(res, 200, JSON.stringify(data), { 'Content-Type':'application/json', 'Cache-Control':'no-store' });
+    } catch (e) {
+      return send(res, 503, JSON.stringify({ error: e.message, service: HEALER_URL }),
+        { 'Content-Type':'application/json' });
+    }
+  }
+
+  /* the intelligent sound healer: intention + musical state -> direction */
+  if (u.pathname === '/api/healer/prompt' && req.method === 'POST') {
+    let body = '';
+    req.on('data', c => { body += c; if (body.length > 8192) req.destroy(); });
+    req.on('end', async () => {
+      let input = {};
+      try { input = JSON.parse(body || '{}'); } catch (e) {}
+      const f = lastFrame || {};
+      const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+      const anchorMap = {
+        174: 'foundation', 285: 'tissue repair', 396: 'liberating fear', 417: 'change',
+        528: 'transformation', 639: 'connection', 741: 'intuition', 852: 'spiritual order', 963: 'divine consciousness'
+      };
+      let anchor = '528 Hz — transformation, love, miracles';
+      try {
+        const mods = await healerService('/api/frequencies');
+        const list = mods && mods.frequencies ? mods.frequencies : [];
+        if (list.length) {
+          const pick = list[Math.abs(Math.round((f.root || 0) * 3)) % list.length];
+          const hz = pick.hz || pick.frequency;
+          if (hz) anchor = hz + ' Hz — ' + (anchorMap[hz] || pick.name || 'intention');
+        }
+      } catch (e) { /* the doctor service is optional */ }
+
+      const ctx = {
+        intention: input.intention || '',
+        category: input.category || 'unspecified',
+        root: input.root !== undefined ? input.root : (f.root || 0),
+        scale: input.scale !== undefined ? input.scale : (f.scale || 0),
+        bpm: input.bpm || 132,
+        section: input.section || 'intro',
+        intensity: input.intensity !== undefined ? input.intensity : 0.7,
+        bright: input.bright !== undefined ? input.bright : 0.5,
+        heardBpm: f.bpm || 0,
+        heardKey: f.root !== undefined ? names[f.root] + ' ' + (f.scale ? 'min' : 'maj') : '',
+        key: names[input.root !== undefined ? input.root : (f.root || 0)],
+        anchor
+      };
+
+      let prompt = null, provider = 'local';
+      if (MODEL_URL) {
+        try { prompt = await modelDirection(ctx); provider = MODEL_NAME; }
+        catch (e) { prompt = localDirection(ctx); provider = 'local (model failed: ' + e.message + ')'; }
+      } else {
+        prompt = localDirection(ctx);
+      }
+      return send(res, 200, JSON.stringify({ prompt, provider, model: MODEL_NAME || null, context: ctx }),
+        { 'Content-Type':'application/json', 'Cache-Control':'no-store' });
+    });
+    return;
   }
 
   if (u.pathname === '/api/proxy' && req.method === 'GET') {

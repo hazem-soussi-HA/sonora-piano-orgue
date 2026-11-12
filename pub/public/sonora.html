@@ -81,6 +81,19 @@ label.mini{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-trans
 .meter-row .bar i{display:block;height:100%;width:0%;background:linear-gradient(90deg,#48e0a0,#ffb347,#ff5a3b);transition:width .08s linear}
 .meter-row span:last-child{text-align:right;color:var(--gold)}
 .engine-badge{font-family:var(--mono);font-size:9px;letter-spacing:.14em;color:var(--purple);border:1px solid rgba(160,124,255,.4);border-radius:5px;padding:3px 7px}
+/* studio */
+.studio{margin:12px 0}
+.studio-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:20px;margin-top:12px}
+.studio-col{min-width:0}
+.healer{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.healer input[type=text]{flex:1;min-width:200px;background:#0c0c11;border:1px solid var(--line);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:11px;padding:8px 10px}
+.prompt{margin-top:10px;padding:12px 14px;border-radius:8px;background:#0b0b10;border:1px solid #23232c;color:#c8c2b8;font:12px/1.6 var(--mono);min-height:96px;white-space:pre-wrap}
+.prompt.live{border-color:rgba(255,179,71,.35);color:#e8dfd0}
+.arrange{display:flex;gap:2px;margin-top:10px;height:26px}
+.arrange i{flex:1;background:#17171f;border-radius:2px;position:relative}
+.arrange i.on{background:rgba(255,179,71,.5)}
+.arrange i.cur{background:var(--gold)}
+@media(max-width:900px){.studio-grid{grid-template-columns:1fr}}
 @media(max-width:760px){.aether-grid{grid-template-columns:1fr}}
 table.presets{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:10px}
 table.presets td{padding:3px 6px;border-bottom:1px solid #1b1b22;color:var(--muted)}
@@ -204,6 +217,46 @@ footer{padding:16px 0 30px;color:#5f5b55;font-family:var(--mono);font-size:10px;
       </div>
     </div>
   </section>
+  <section class="panel studio">
+    <h2>Hazoom Live Studio <i>DJ × Orgue × Healer</i></h2>
+    <div class="body">
+      <div class="row">
+        <button id="djPlay">▶ Play</button>
+        <button id="djStop">■ Stop</button>
+        <span class="badge" id="djSection">intro</span>
+        <span class="badge warm" id="djKey">A minor</span>
+        <span class="badge" id="djBpm">132 bpm</span>
+        <span class="badge live" id="djCollab">collaborating</span>
+        <label class="mini">Arrangement</label>
+      </div>
+      <div class="arrange" id="arrange"></div>
+      <div class="studio-grid">
+        <div class="studio-col">
+          <div class="knobs" data-g="dj"></div>
+          <div class="row" style="margin-top:10px">
+            <span class="mini">Obey the record</span>
+            <button id="colKey" class="on">Key</button>
+            <button id="colTempo" class="on">Tempo</button>
+            <button id="colFilter" class="on">Filter</button>
+            <button id="colEnergy" class="on">Energy</button>
+          </div>
+          <div class="hint">The engine locks onto what the machine hears: the <b>key</b> it plays, the <b>tempo</b> it rides, the <b>brightness</b> it copies and the <b>energy</b> it answers. Arrangement DNA from <code>hazoom-dj-techno</code>.</div>
+        </div>
+        <div class="studio-col">
+          <div class="healer">
+            <label class="mini">Intention</label>
+            <input type="text" id="intention" placeholder="I want to feel the drop without breaking the spell">
+            <button id="askHealer">Ask the healer</button>
+          </div>
+          <div class="prompt" id="promptOut">The sound healer is waiting for an intention. Ask, and the direction it gives is applied to the live engine — the filter, the space, the weight.</div>
+          <div class="row" style="margin-top:8px">
+            <span class="mini">Model</span><span class="badge" id="modelBadge">local</span>
+            <span class="mini">Doctor service</span><span class="badge" id="doctorBadge">checking…</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 </main>
 
 <div class="kbwrap"><div class="wrap">
@@ -217,6 +270,7 @@ footer{padding:16px 0 30px;color:#5f5b55;font-family:var(--mono);font-size:10px;
 
 <footer class="wrap"><span>SONORA · PIANO ORGUE · SYNTHÉSE WEB AUDIO</span><span id="recState">RECORDER · IDLE</span></footer>
 
+<script src="dj-live.js"></script>
 <script>
 'use strict';
 /* ============================ helpers ============================ */
@@ -239,7 +293,8 @@ const DEF={
   pHarm:10,pDecay:7,pBright:.55,pHammer:.5,pInharm:.0004,pRelease:.45,pLevel:.8,
   tone:.3,chiff:.5,vibRate:5.4,vibDepth:5,leslie:.35,oLevel:.85,
   drive:.12,bass:0,treble:2,revMix:.28,revSize:2.6,revTone:.5,chorus:.3,chorusRate:.5,
-  volume:.8,pan:0,spread:.35,poly:14,gate:.55,arpOct:1,bpm:96
+  volume:.8,pan:0,spread:.35,poly:14,gate:.55,arpOct:1,bpm:96,
+  djBpm:132,djIntensity:.72,djListen:.6
 };
 const S=Object.assign({},DEF);
 S.draw=[0,8,8,0,0,0,0,0];
@@ -359,7 +414,10 @@ const DEFS=[
   {g:'master',id:'spread',l:'SPREAD',min:0,max:1,value:.35,fmt:pct},
   {g:'master',id:'poly',l:'POLY',min:2,max:24,value:14,step:1,fmt:v=>String(Math.round(v))},
   {g:'seq',id:'gate',l:'GATE',min:.05,max:1,value:.55,fmt:pct},
-  {g:'seq',id:'arpOct',l:'OCT',min:1,max:4,value:1,step:1,fmt:v=>String(Math.round(v))}
+  {g:'seq',id:'arpOct',l:'OCT',min:1,max:4,value:1,step:1,fmt:v=>String(Math.round(v))},
+  {g:'dj',id:'djBpm',l:'BPM',min:80,max:180,value:132,step:1,fmt:v=>String(Math.round(v))+' bpm'},
+  {g:'dj',id:'djIntensity',l:'INTENS',min:0,max:1,value:.72,fmt:pct},
+  {g:'dj',id:'djListen',l:'OBEY',min:0,max:1,value:.6,fmt:pct}
 ];
 DEFS.forEach(d=>{
   const host=document.querySelector('[data-g="'+d.g+'"]');if(!host)return;
@@ -522,6 +580,12 @@ function applyAll(force){
   /* organ timbre on running voices */
   if(force||Math.abs(S.tone-lastWave)>.02){lastWave=S.tone;const w=organWave(S.tone);liveVoices.forEach(v=>v.orgOscs.forEach(o=>{try{o.setPeriodicWave(w);}catch(e){}}));}
   $('#mode').textContent='PIANO '+Math.round(S.blend*100)+'% · ORGUE '+Math.round((1-S.blend)*100)+'%';
+  /* the live studio follows the patch */
+  if(DJ){
+    DJ.intensity=S.djIntensity;
+    DJ.listen=S.djListen;
+    if(!DJ.collab.tempo)DJ.bpm=S.djBpm;
+  }
 }
 /* ============================ voices ============================ */
 const liveVoices=new Set();
@@ -1030,6 +1094,7 @@ function drawScope(){
     scopeSub.textContent='rms '+(20*Math.log10(rms+1e-8)).toFixed(1)+' dB · '+voices.size+' voix';
   }
   $('#voices').textContent=voices.size+' voix';
+  studioFrame();
 }
 requestAnimationFrame(drawScope);
 
@@ -1266,7 +1331,7 @@ function aetherServer(){
   };
   ws.onmessage=e=>{
     let m;try{m=JSON.parse(e.data);}catch(err){return;}
-    if(m.type==='frame'&&m.frame)applyAether(m.frame);
+    if(m.type==='frame'&&m.frame){applyAether(m.frame);if(DJ)DJ.react(m.frame);}
     if(m.type==='listener'&&m.state&&!m.state.running)setStatus('Listener serveur: '+(m.state.error||'arrêté'),'err');
   };
   ws.onerror=()=>setStatus('WebSocket /listen indisponible','err');
@@ -1299,6 +1364,8 @@ function applyAether(a){
   AETHER.root=a.root;AETHER.scale=a.scale;AETHER.bpm=a.bpm;AETHER.conf=a.confidence;
   AETHER.clarity=a.clarity;AETHER.rms=a.rms;AETHER.centroid=a.centroid;AETHER.flux=a.flux;
   AETHER.chroma=a.chroma;AETHER.spectrum=a.spectrum;
+  /* the live studio plays with the record */
+  if(DJ)DJ.react(a);
   /* --- adaptation --- */
   if(AETHER.autoKey&&a.confidence>0.45){
     if(a.root!==AETHER.lastRoot||a.scale!==AETHER.lastScale){
@@ -1355,10 +1422,94 @@ function drawAether(){
   $('#aetherBpm').textContent=bpmOk?Math.round(AETHER.bpm)+' bpm':'— bpm';
 }
 
+/* ============================ the live studio ============================ */
+let DJ=null;
+const STUDIO={step:0,section:'intro'};
+
+function studioInit(){
+  if(DJ)return;
+  if(!ctx)initCtx();
+  DJ=new DJ_LIVE.LiveDJ(ctx,N.master);
+  DJ.bpm=S.djBpm;DJ.intensity=S.djIntensity;DJ.listen=S.djListen;
+  DJ.onStep=(step,at,sec)=>{STUDIO.step=step;STUDIO.section=sec.kind;};
+  const host=$('#arrange');
+  if(host){
+    host.innerHTML='';
+    DJ_LIVE.SECTIONS.forEach(s=>{
+      for(let i=0;i<s.bars;i++){
+        const c=document.createElement('i');
+        c.dataset.kind=s.kind;c.title=s.kind;
+        host.appendChild(c);
+      }
+    });
+  }
+  $('#djPlay').onclick=()=>{
+    if(!ctx)initCtx();
+    resumeCtx();
+    if(DJ.playing){DJ.stop();$('#djPlay').classList.remove('active');$('#djPlay').textContent='▶ Play';}
+    else{DJ.start();$('#djPlay').classList.add('active');$('#djPlay').textContent='❚❚ Pause';setStatus('Le studio DJ tourne','ok');}
+  };
+  $('#djStop').onclick=()=>{
+    if(DJ)DJ.stop();
+    $('#djPlay').classList.remove('active');
+    $('#djPlay').textContent='▶ Play';
+  };
+  const collab=(id,key)=>{const b=$(id);b.onclick=()=>{DJ.collab[key]=!DJ.collab[key];b.classList.toggle('on',DJ.collab[key]);};};
+  collab('#colKey','key');collab('#colTempo','tempo');collab('#colFilter','filter');collab('#colEnergy','energy');
+  $('#askHealer').onclick=askHealer;
+  checkDoctor();
+}
+function studioFrame(){
+  if(!DJ)return;
+  const names=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  $('#djSection').textContent=DJ.section;
+  $('#djKey').textContent=names[DJ.root]+' '+(DJ.scale?'minor':'major');
+  $('#djBpm').textContent=Math.round(DJ.bpm)+' bpm';
+  $('#djCollab').textContent=DJ.heard.conf>0.4?('in '+names[DJ.heard.root]):'no record';
+  const cells=$$('#arrange i');
+  const bar=STUDIO.step?Math.floor(STUDIO.step/16):0;
+  cells.forEach((c,i)=>{
+    c.classList.toggle('on',c.dataset.kind===DJ.section);
+    c.classList.toggle('cur',i===bar);
+  });
+}
+async function askHealer(){
+  const out=$('#promptOut');
+  out.textContent='The healer is listening…';
+  out.classList.remove('live');
+  try{
+    const r=await fetch('/api/healer/prompt',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        intention:$('#intention').value,
+        root:DJ?DJ.root:0,scale:DJ?DJ.scale:0,
+        bpm:DJ?Math.round(DJ.bpm):132,section:DJ?DJ.section:'intro',
+        intensity:DJ?DJ.intensity:0.7,bright:DJ?DJ.mood.bright:0.5
+      })
+    });
+    const j=await r.json();
+    out.textContent=j.prompt||'(no answer)';
+    out.classList.add('live');
+    $('#modelBadge').textContent=j.provider||'local';
+    if(DJ)DJ.setMoodFromText(j.prompt||'');
+    setStatus('Direction appliquée au studio','ok');
+  }catch(e){
+    out.textContent='The healer is unreachable: '+e.message;
+  }
+}
+async function checkDoctor(){
+  try{
+    const r=await fetch('/api/healer/api/modules');
+    if(r.ok){$('#doctorBadge').textContent='online';$('#doctorBadge').classList.add('live');}
+    else $('#doctorBadge').textContent='offline';
+  }catch(e){$('#doctorBadge').textContent='offline';}
+}
+
 refreshPresets();
 buildKeys();
 initMIDI();
 startMachine();
+studioInit();
 applyPreset('Sonora Classic');
 $('#preset').value='Sonora Classic';
 applyAll(true);
